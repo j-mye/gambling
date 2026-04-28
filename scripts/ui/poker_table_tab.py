@@ -148,24 +148,23 @@ def _render_live_snapshot(
     state: Any,
     hero: int,
     table_placeholder: Any,
-    status_placeholder: Any,
-    status_text: str = "",
+    controls_placeholder: Any,
+    include_controls: bool = False,
 ) -> None:
     """Render an intermediate table snapshot during bot playback."""
     view = _build_view(state, hero)
     with table_placeholder.container():
         _render_table(view)
-    if status_text:
-        status_placeholder.info(status_text)
-    else:
-        status_placeholder.empty()
+    with controls_placeholder.container():
+        st.markdown("---")
+        _render_hero_dashboard(view, include_controls=include_controls)
 
 
 def _run_bots_to_hero(
     state: Any,
     hero: int,
     table_placeholder: Any | None = None,
-    status_placeholder: Any | None = None,
+    controls_placeholder: Any | None = None,
 ) -> None:
     """Alternate Dealer → Bot until the hero must act or the hand ends.
 
@@ -193,14 +192,12 @@ def _run_bots_to_hero(
         # Ask PokerKit what is legal, then pick from that exact list.
         # can_check_or_call() covers both "check" (no bet to face) and "call"
         # (facing a bet), so it handles every non-aggressive betting action.
-        action_text = ""
         if state.can_check_or_call():
             facing = state.checking_or_calling_amount > 0
             # 80 % call / check, 20 % fold (only when actually facing a bet).
             if facing and random.random() < 0.20 and state.can_fold():
                 state.fold()
                 st.session_state.last_action[ti] = "Fold"
-                action_text = f"Seat {ti + 1} folds."
             else:
                 call_amount = int(state.checking_or_calling_amount or 0)
                 state.check_or_call()
@@ -209,16 +206,10 @@ def _run_bots_to_hero(
                     if facing
                     else "Check"
                 )
-                action_text = (
-                    f"Seat {ti + 1} calls ${call_amount}."
-                    if facing
-                    else f"Seat {ti + 1} checks."
-                )
         elif state.can_fold():
             # Fallback – should rarely trigger but guarantees forward progress.
             state.fold()
             st.session_state.last_action[ti] = "Fold"
-            action_text = f"Seat {ti + 1} folds."
         else:
             # No legal betting action available on a live turn.
             # This should not happen with the chosen automations, but break
@@ -232,13 +223,16 @@ def _run_bots_to_hero(
         # 1) Action already executed above.
         # 2) Immediately render the updated table into placeholders.
         # 3) Sleep after the render so users can actually see this action.
-        if table_placeholder is not None and status_placeholder is not None:
+        if (
+            table_placeholder is not None
+            and controls_placeholder is not None
+        ):
             _render_live_snapshot(
                 state,
                 hero,
                 table_placeholder,
-                status_placeholder,
-                action_text,
+                controls_placeholder,
+                include_controls=False,
             )
             time.sleep(1.5)
 
@@ -611,7 +605,10 @@ def _render_table(view: dict[str, Any]) -> None:
     )
 
 
-def _render_hero_dashboard(view: dict[str, Any]) -> None:
+def _render_hero_dashboard(
+    view: dict[str, Any],
+    include_controls: bool = True,
+) -> None:
     hero = view["hero"]
     with st.container(border=True):
         left, right = st.columns(2)
@@ -625,7 +622,8 @@ def _render_hero_dashboard(view: dict[str, Any]) -> None:
 
         # Right half: nested action controls.
         with right:
-            _render_controls(view)
+            if include_controls:
+                _render_controls(view)
 
 
 def _render_controls(view: dict[str, Any]) -> None:
@@ -751,7 +749,6 @@ def render_playable_poker_tab() -> None:
     hero: int = st.session_state.hero
     table_placeholder = st.empty()
     controls_placeholder = st.empty()
-    bot_status_placeholder = st.empty()
 
     # ── PILLAR 3: Strict execution order ──────────────────────────────────────
 
@@ -768,14 +765,13 @@ def render_playable_poker_tab() -> None:
         state,
         hero,
         table_placeholder=table_placeholder,
-        status_placeholder=bot_status_placeholder,
+        controls_placeholder=controls_placeholder,
     )
 
     # ── Step 4: Render (read-only from here down) ─────────────────────────────
     view = _build_view(state, hero)
     with table_placeholder.container():
         _render_table(view)
-    bot_status_placeholder.empty()
     with controls_placeholder.container():
         st.markdown("---")
         _render_hero_dashboard(view)
