@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import random  # used for hero seat selection and bot 80/20 fold decision
 import re
+import time
 from typing import Any
 
 import streamlit as st
@@ -143,7 +144,29 @@ def _run_dealer(state: Any) -> None:
 # PILLAR 3 – BOT LOOP  (legal moves only – this is what was broken before)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _run_bots_to_hero(state: Any, hero: int) -> None:
+def _render_live_snapshot(
+    state: Any,
+    hero: int,
+    table_placeholder: Any,
+    status_placeholder: Any,
+    status_text: str = "",
+) -> None:
+    """Render an intermediate table snapshot during bot playback."""
+    view = _build_view(state, hero)
+    with table_placeholder.container():
+        _render_table(view)
+    if status_text:
+        status_placeholder.info(status_text)
+    else:
+        status_placeholder.empty()
+
+
+def _run_bots_to_hero(
+    state: Any,
+    hero: int,
+    table_placeholder: Any | None = None,
+    status_placeholder: Any | None = None,
+) -> None:
     """Alternate Dealer → Bot until the hero must act or the hand ends.
 
     The bot only ever asks PokerKit "what can I do?" before acting.
@@ -170,23 +193,32 @@ def _run_bots_to_hero(state: Any, hero: int) -> None:
         # Ask PokerKit what is legal, then pick from that exact list.
         # can_check_or_call() covers both "check" (no bet to face) and "call"
         # (facing a bet), so it handles every non-aggressive betting action.
+        action_text = ""
         if state.can_check_or_call():
             facing = state.checking_or_calling_amount > 0
             # 80 % call / check, 20 % fold (only when actually facing a bet).
             if facing and random.random() < 0.20 and state.can_fold():
                 state.fold()
                 st.session_state.last_action[ti] = "Fold"
+                action_text = f"Seat {ti + 1} folds."
             else:
+                call_amount = int(state.checking_or_calling_amount or 0)
                 state.check_or_call()
                 st.session_state.last_action[ti] = (
-                    f"Call ${state.checking_or_calling_amount}"
+                    f"Call ${call_amount}"
                     if facing
                     else "Check"
+                )
+                action_text = (
+                    f"Seat {ti + 1} calls ${call_amount}."
+                    if facing
+                    else f"Seat {ti + 1} checks."
                 )
         elif state.can_fold():
             # Fallback – should rarely trigger but guarantees forward progress.
             state.fold()
             st.session_state.last_action[ti] = "Fold"
+            action_text = f"Seat {ti + 1} folds."
         else:
             # No legal betting action available on a live turn.
             # This should not happen with the chosen automations, but break
@@ -195,6 +227,20 @@ def _run_bots_to_hero(state: Any, hero: int) -> None:
                 f"Seat {ti + 1} has no legal action – structural stall."
             )
             break
+
+        # Think -> Act -> Pause cycle:
+        # 1) Action already executed above.
+        # 2) Immediately render the updated table into placeholders.
+        # 3) Sleep after the render so users can actually see this action.
+        if table_placeholder is not None and status_placeholder is not None:
+            _render_live_snapshot(
+                state,
+                hero,
+                table_placeholder,
+                status_placeholder,
+                action_text,
+            )
+            time.sleep(1.5)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -538,6 +584,9 @@ def render_playable_poker_tab() -> None:
     _ensure_initialized()
     state: Any = st.session_state.poker_state
     hero: int = st.session_state.hero
+    table_placeholder = st.empty()
+    controls_placeholder = st.empty()
+    bot_status_placeholder = st.empty()
 
     # ── PILLAR 3: Strict execution order ──────────────────────────────────────
 
@@ -550,13 +599,21 @@ def render_playable_poker_tab() -> None:
     _run_dealer(state)
 
     # Step 3 – Bots + Dealer loop until hero's turn or hand ends.
-    _run_bots_to_hero(state, hero)
+    _run_bots_to_hero(
+        state,
+        hero,
+        table_placeholder=table_placeholder,
+        status_placeholder=bot_status_placeholder,
+    )
 
     # ── Step 4: Render (read-only from here down) ─────────────────────────────
     view = _build_view(state, hero)
-    _render_table(view)
-    st.markdown("---")
-    _render_controls(view)
+    with table_placeholder.container():
+        _render_table(view)
+    bot_status_placeholder.empty()
+    with controls_placeholder.container():
+        st.markdown("---")
+        _render_controls(view)
 
     # Collapsible debug panel
     with st.expander("Debug", expanded=False):
