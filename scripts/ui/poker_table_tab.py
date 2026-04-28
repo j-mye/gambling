@@ -402,6 +402,36 @@ def _street_pot_breakdown(state: Any) -> dict[str, float]:
     return out
 
 
+def _seat_role_map(state: Any, seat_count: int) -> dict[int, str]:
+    """Return seat role labels for the current hand: D, SB, BB."""
+    sb_seat: int | None = None
+    bb_seat: int | None = None
+    blind_posts: list[tuple[int, float]] = []
+
+    for op in list(getattr(state, "operations", []) or []):
+        if type(op).__name__ != "BlindOrStraddlePosting":
+            continue
+        seat = getattr(op, "player_index", None)
+        amount = getattr(op, "amount", None)
+        if seat is None or amount is None:
+            continue
+        blind_posts.append((int(seat), float(amount)))
+
+    if blind_posts:
+        sb_seat = min(blind_posts, key=lambda x: x[1])[0]
+        bb_seat = max(blind_posts, key=lambda x: x[1])[0]
+
+    roles: dict[int, str] = {}
+    if sb_seat is not None:
+        roles[sb_seat] = "SB"
+    if bb_seat is not None:
+        roles[bb_seat] = "BB"
+    if sb_seat is not None and seat_count > 0:
+        dealer = (sb_seat - 1) % seat_count
+        roles[dealer] = "D"
+    return roles
+
+
 def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
     """Return (street_bet, total_hand_bet) for the hero seat."""
     bets = list(getattr(state, "bets", []) or [])
@@ -498,6 +528,7 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
     street_pots = _street_pot_breakdown(state)
     hero_street_bet, hero_total_bet = _hero_commitment_metrics(state, hero)
     phase_key = _phase_key_from_board(len(board_cards))
+    seat_roles = _seat_role_map(state, _N_PLAYERS)
     # Bind the visible metric to live active bets so it always updates with the
     # current betting round. Keep street breakdown as secondary/debug context.
     current_street_pot = live_current_street_pot
@@ -528,6 +559,7 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
         "current_street_label": current_street_label,
         "hero_street_bet": hero_street_bet,
         "hero_total_bet": hero_total_bet,
+        "seat_roles": seat_roles,
     }
 
 
@@ -559,6 +591,7 @@ def _seat_html(seat: int, view: dict[str, Any]) -> str:
     bet = view["bets"][seat] if seat < len(view["bets"]) else 0
     hole = view["hole_by_seat"][seat] if seat < len(view["hole_by_seat"]) else []
     last = view["last_action"].get(seat, "")
+    role = view.get("seat_roles", {}).get(seat, "")
 
     seat_class = "player-seat"
     if is_active:
@@ -568,6 +601,14 @@ def _seat_html(seat: int, view: dict[str, Any]) -> str:
     seat_class += _outcome_class(seat, view)
 
     badge = f"<div class='action-badge'>{last}</div>" if last else ""
+    role_badge = ""
+    if role:
+        role_color = {"D": "#F1C40F", "SB": "#3498DB", "BB": "#9B59B6"}.get(role, "#BCCCDC")
+        role_badge = (
+            "<div style='display:inline-flex;align-items:center;justify-content:center;"
+            "margin-left:6px;padding:2px 7px;border-radius:999px;font-size:10px;"
+            f"font-weight:800;background:{role_color};color:#102A43;'>{role}</div>"
+        )
     name = f"You – Seat {seat + 1}" if is_hero else f"Seat {seat + 1}"
 
     if is_hero:
@@ -585,7 +626,7 @@ def _seat_html(seat: int, view: dict[str, Any]) -> str:
     return (
         f"<div class='{seat_class}' style='position:relative;'>"
         f"{badge}"
-        f"<div style='font-weight:700;font-size:13px;'>{name}</div>"
+        f"<div style='font-weight:700;font-size:13px;'>{name}{role_badge}</div>"
         f"<div class='seat-metrics'>Stack ${stack} | Bet ${bet}</div>"
         f"<div style='display:flex;gap:6px;margin-top:8px;'>{cards_html}</div>"
         f"</div>"
@@ -627,27 +668,6 @@ def _render_table(view: dict[str, Any]) -> None:
     hero = view["hero"]
     opponents = [s for s in range(view["seat_count"]) if s != hero]
 
-    # Pot breakdown header – custom background, centered text
-    pot = view["pot_total"]
-    st.markdown(
-        f"<div style='text-align:center;margin:10px 0 8px 0;padding:12px;"
-        f"border:1px solid {theme.PANEL_BORDER};border-radius:12px;"
-        f"background:{theme.PANEL_BG};color:{theme.TEXT_LIGHT};'>"
-        f"<div style='display:flex;justify-content:center;gap:32px;margin-top:8px;'>"
-        f"  <div style='flex:1;text-align:center;'>"
-        f"    <div style='font-size:20px;color:{theme.TEXT_MUTED};margin-bottom:3px;'>Total Pot</div>"
-        f"    <div style='font-size:19px;font-weight:700;'>${pot:,.2f}</div>"
-        f"  </div>"
-        f"  <div style='flex:1;text-align:center;'>"
-        f"    <div style='font-size:20px;color:{theme.TEXT_MUTED};margin-bottom:3px;'>"
-        f"      {view.get('current_street_label', 'Street Bets')}</div>"
-        f"    <div style='font-size:19px;font-weight:700;'>"
-        f"      ${float(view.get('current_street_pot', 0.0)):,.2f}"
-        f"    </div>"
-        f"  </div>",
-        unsafe_allow_html=True,
-    )
-
     # Opponent row
     cols = st.columns(len(opponents))
     for i, seat in enumerate(opponents):
@@ -680,6 +700,103 @@ def _render_hero_dashboard(
         with right:
             if include_controls:
                 _render_controls(view)
+            else:
+                _render_controls_readonly(view)
+
+
+def _render_controls_readonly(view: dict[str, Any]) -> None:
+    """Render a non-interactive controls layout for bot-loop snapshots.
+
+    Keeps actions and pot metrics visible without creating Streamlit widgets,
+    which prevents duplicate widget key crashes during repeated snapshot renders.
+    """
+    facing = view["facing_bet"]
+    call_amount = view["call_amount"]
+    min_raise = view["min_raise"]
+    max_raise = view["max_raise"]
+    call_label = f"Call ${call_amount}" if facing else "Check"
+    bet_label = "Raise To" if facing else "Bet"
+    default_raise = max(min_raise, min(min_raise, max_raise))
+    submit_label = (
+        f"{bet_label} ${int(st.session_state.get('raise_input', default_raise))}"
+    )
+
+    # Reuse the exact same action-control CSS for visual parity.
+    st.markdown(
+        """
+<style>
+/* Scoped only to this action panel via marker + :has */
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) {
+  min-height: 240px;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="column"] {
+  min-height: 240px;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Fold"] {
+  height: 120px !important;         /* 50% of passive column */
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Check / Call"] {
+  height: 120px !important;         /* 50% of passive column */
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Submit Bet / Raise"] {
+  height: 192px !important;         /* 80% of aggressive column */
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="stNumberInput"] {
+  width: 100% !important;
+}
+</style>
+<div class="hero-action-controls-scope"></div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    seq = int(st.session_state.get("_readonly_controls_seq", 0)) + 1
+    st.session_state["_readonly_controls_seq"] = seq
+
+    passive_col, aggressive_col = st.columns([1, 1])
+    with passive_col:
+        st.button(
+            "Fold",
+            use_container_width=True,
+            key=f"ro_btn_fold_{seq}",
+            disabled=True,
+        )
+        st.button(
+            call_label,
+            use_container_width=True,
+            key=f"ro_btn_call_{seq}",
+            disabled=True,
+        )
+        st.metric("Total Pot", f"${float(view.get('pot_total', 0.0)):,.2f}")
+
+    with aggressive_col:
+        st.button(
+            submit_label,
+            use_container_width=True,
+            key=f"ro_btn_raise_{seq}",
+            disabled=True,
+        )
+        st.number_input(
+            bet_label,
+            min_value=min_raise,
+            max_value=max(min_raise, max_raise),
+            value=int(st.session_state.get("raise_input", default_raise)),
+            step=1,
+            key=f"ro_raise_input_{seq}",
+            label_visibility="collapsed",
+            disabled=True,
+        )
+        st.metric(
+            view.get("current_street_label", "Street Bets"),
+            f"${float(view.get('current_street_pot', 0.0)):,.2f}",
+        )
+        if not view["is_hero_turn"] and not view["hand_complete"]:
+            ti = view["turn_index"]
+            label = f"Seat {ti + 1}" if ti is not None else "the engine"
+            st.caption(f"Waiting for {label} to act…")
 
 
 def _render_controls(view: dict[str, Any]) -> None:
@@ -689,7 +806,15 @@ def _render_controls(view: dict[str, Any]) -> None:
         hero = view["hero"]
         hp = payoffs[hero] if hero < len(payoffs) else 0
         msg = "You won!" if hp > 0 else ("You lost." if hp < 0 else "Chopped pot.")
-        st.success(f"Hand over — {msg}  ({hp:+.0f} chips)")
+        color = "#2ECC71" if hp > 0 else "#E74C3C"
+        st.markdown(
+            (
+                "<div style='padding:10px 12px;border-radius:10px;"
+                f"border:1px solid {color};background:rgba(16, 42, 67, 0.35);"
+                f"color:{color};font-weight:700;'>Hand over — {msg}  ({hp:+.0f} chips)</div>"
+            ),
+            unsafe_allow_html=True,
+        )
         if st.button("Deal Next Hand", key="next_hand_btn"):
             _new_hand()
             st.rerun()
@@ -758,6 +883,7 @@ div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[
         ):
             st.session_state.pending_action = {"type": "call"}
             st.rerun()
+        st.metric("Total Pot", f"${float(view.get('pot_total', 0.0)):,.2f}")
 
     with aggressive_col:
         # Clamp default value inside [min_raise, max_raise] to avoid Streamlit error.
@@ -785,6 +911,10 @@ div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[
             key="raise_input",
             label_visibility="collapsed",
             disabled=controls_disabled,
+        )
+        st.metric(
+            view.get("current_street_label", "Street Bets"),
+            f"${float(view.get('current_street_pot', 0.0)):,.2f}",
         )
         if not view["is_hero_turn"] and not view["hand_complete"]:
             ti = view["turn_index"]
