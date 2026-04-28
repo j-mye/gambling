@@ -79,6 +79,18 @@ def _normalize_bankrolls(raw: Any) -> list[int]:
     # Prevent invalid negative stack values from poisoning new hands.
     return [max(0, v) for v in out]
 
+
+def _blinds_vector_from_button(button_index: int, player_count: int) -> tuple[int, ...]:
+    """Build per-seat blind vector for static seats + moving button."""
+    blinds = [0] * player_count
+    if player_count <= 0:
+        return tuple(blinds)
+    sb_seat = (button_index + 1) % player_count
+    bb_seat = (button_index + 2) % player_count
+    blinds[sb_seat] = int(_BLINDS[0])
+    blinds[bb_seat] = int(_BLINDS[1])
+    return tuple(blinds)
+
 def _deck_from_state(state: Any) -> list[str]:
     """Extract PokerKit's pre-shuffled internal deck as our session deck.
 
@@ -93,25 +105,29 @@ def _deck_from_state(state: Any) -> list[str]:
     return out                             # pop() from right = top of deck
 
 
-def _new_hand() -> None:
+def _new_hand(*, advance_button: bool) -> None:
     """Create a fresh game and deal hole cards."""
     bankrolls = _normalize_bankrolls(
         st.session_state.get("master_bankrolls", [_STARTING_STACK] * _N_PLAYERS)
     )
     st.session_state.master_bankrolls = bankrolls
+    button_index = int(st.session_state.get("button_index", 0)) % _N_PLAYERS
+    if advance_button:
+        button_index = (button_index + 1) % _N_PLAYERS
+    st.session_state.button_index = button_index
+    blinds_vector = _blinds_vector_from_button(button_index, _N_PLAYERS)
 
     state = NoLimitTexasHoldem.create_state(
         _AUTOMATIONS,
         True,                           # uniform_antes
         0,                              # raw_antes
-        _BLINDS,                        # raw_blinds_or_straddles
+        blinds_vector,                  # raw_blinds_or_straddles
         _MIN_BET,                       # min_bet
         tuple(bankrolls),
         _N_PLAYERS,
     )
     st.session_state.poker_state = state
     st.session_state.deck = _deck_from_state(state)
-    st.session_state.hero = random.randrange(_N_PLAYERS)
     st.session_state.last_action = {}        # {seat_index: str} action badge text
     st.session_state.terminal_payload = None
     st.session_state.action_error = ""
@@ -131,8 +147,12 @@ def _ensure_initialized() -> None:
         st.session_state.hand_resolved = False
     if "resolved_hand_id" not in st.session_state:
         st.session_state.resolved_hand_id = None
+    if "hero" not in st.session_state:
+        st.session_state.hero = random.randrange(_N_PLAYERS)
+    if "button_index" not in st.session_state:
+        st.session_state.button_index = 0
     if "poker_state" not in st.session_state:
-        _new_hand()
+        _new_hand(advance_button=False)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -184,6 +204,8 @@ def _render_live_snapshot(
     hero: int,
     table_placeholder: Any,
     controls_placeholder: Any,
+    status_placeholder: Any | None = None,
+    status_text: str = "",
     include_controls: bool = False,
 ) -> None:
     """Render an intermediate table snapshot during bot playback."""
@@ -193,6 +215,11 @@ def _render_live_snapshot(
     with controls_placeholder.container():
         st.markdown("---")
         _render_hero_dashboard(view, include_controls=include_controls)
+    if status_placeholder is not None:
+        if status_text:
+            status_placeholder.info(status_text)
+        else:
+            status_placeholder.empty()
 
 
 def _run_bots_to_hero(
@@ -200,6 +227,7 @@ def _run_bots_to_hero(
     hero: int,
     table_placeholder: Any | None = None,
     controls_placeholder: Any | None = None,
+    status_placeholder: Any | None = None,
 ) -> None:
     """Alternate Dealer → Bot until the hero must act or the hand ends.
 
@@ -223,16 +251,35 @@ def _run_bots_to_hero(
             # Hero's turn – let the UI render controls.
             break
 
+        # Show explicit hand-off before the bot mutates state.
+        if (
+            table_placeholder is not None
+            and controls_placeholder is not None
+            and status_placeholder is not None
+        ):
+            _render_live_snapshot(
+                state,
+                hero,
+                table_placeholder,
+                controls_placeholder,
+                status_placeholder=status_placeholder,
+                status_text=f"Seat {ti + 1} is thinking...",
+                include_controls=False,
+            )
+            time.sleep(1.5)
+
         # ── Bot's turn ───────────────────────────────────────────────────────
         # Ask PokerKit what is legal, then pick from that exact list.
         # can_check_or_call() covers both "check" (no bet to face) and "call"
         # (facing a bet), so it handles every non-aggressive betting action.
+        action_text = ""
         if state.can_check_or_call():
             facing = state.checking_or_calling_amount > 0
             # 80 % call / check, 20 % fold (only when actually facing a bet).
             if facing and random.random() < 0.20 and state.can_fold():
                 state.fold()
                 st.session_state.last_action[ti] = "Fold"
+                action_text = f"Seat {ti + 1} folds."
             else:
                 call_amount = int(state.checking_or_calling_amount or 0)
                 state.check_or_call()
@@ -241,10 +288,16 @@ def _run_bots_to_hero(
                     if facing
                     else "Check"
                 )
+                action_text = (
+                    f"Seat {ti + 1} calls ${call_amount}."
+                    if facing
+                    else f"Seat {ti + 1} checks."
+                )
         elif state.can_fold():
             # Fallback – should rarely trigger but guarantees forward progress.
             state.fold()
             st.session_state.last_action[ti] = "Fold"
+            action_text = f"Seat {ti + 1} folds."
         else:
             # No legal betting action available on a live turn.
             # This should not happen with the chosen automations, but break
@@ -254,22 +307,22 @@ def _run_bots_to_hero(
             )
             break
 
-        # Think -> Act -> Pause cycle:
-        # 1) Action already executed above.
-        # 2) Immediately render the updated table into placeholders.
-        # 3) Sleep after the render so users can actually see this action.
+        # Render the action result, then brief pause so users can register it.
         if (
             table_placeholder is not None
             and controls_placeholder is not None
+            and status_placeholder is not None
         ):
             _render_live_snapshot(
                 state,
                 hero,
                 table_placeholder,
                 controls_placeholder,
+                status_placeholder=status_placeholder,
+                status_text=action_text,
                 include_controls=False,
             )
-            time.sleep(1.5)
+            time.sleep(0.5)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -460,34 +513,14 @@ def _street_pot_breakdown(state: Any) -> dict[str, float]:
     return out
 
 
-def _seat_role_map(state: Any, seat_count: int) -> dict[int, str]:
+def _seat_role_map(button_index: int, seat_count: int) -> dict[int, str]:
     """Return seat role labels for the current hand: D, SB, BB."""
-    sb_seat: int | None = None
-    bb_seat: int | None = None
-    blind_posts: list[tuple[int, float]] = []
-
-    for op in list(getattr(state, "operations", []) or []):
-        if type(op).__name__ != "BlindOrStraddlePosting":
-            continue
-        seat = getattr(op, "player_index", None)
-        amount = getattr(op, "amount", None)
-        if seat is None or amount is None:
-            continue
-        blind_posts.append((int(seat), float(amount)))
-
-    if blind_posts:
-        sb_seat = min(blind_posts, key=lambda x: x[1])[0]
-        bb_seat = max(blind_posts, key=lambda x: x[1])[0]
-
-    roles: dict[int, str] = {}
-    if sb_seat is not None:
-        roles[sb_seat] = "SB"
-    if bb_seat is not None:
-        roles[bb_seat] = "BB"
-    if sb_seat is not None and seat_count > 0:
-        dealer = (sb_seat - 1) % seat_count
-        roles[dealer] = "D"
-    return roles
+    if seat_count <= 0:
+        return {}
+    dealer = int(button_index) % seat_count
+    sb_seat = (dealer + 1) % seat_count
+    bb_seat = (dealer + 2) % seat_count
+    return {dealer: "D", sb_seat: "SB", bb_seat: "BB"}
 
 
 def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
@@ -586,7 +619,8 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
     street_pots = _street_pot_breakdown(state)
     hero_street_bet, hero_total_bet = _hero_commitment_metrics(state, hero)
     phase_key = _phase_key_from_board(len(board_cards))
-    seat_roles = _seat_role_map(state, _N_PLAYERS)
+    button_index = int(st.session_state.get("button_index", 0)) % _N_PLAYERS
+    seat_roles = _seat_role_map(button_index, _N_PLAYERS)
     # Bind the visible metric to live active bets so it always updates with the
     # current betting round. Keep street breakdown as secondary/debug context.
     current_street_pot = live_current_street_pot
@@ -618,6 +652,9 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
         "hero_street_bet": hero_street_bet,
         "hero_total_bet": hero_total_bet,
         "seat_roles": seat_roles,
+        "button_index": button_index,
+        "sb_seat": (button_index + 1) % _N_PLAYERS,
+        "bb_seat": (button_index + 2) % _N_PLAYERS,
     }
 
 
@@ -874,7 +911,7 @@ def _render_controls(view: dict[str, Any]) -> None:
             unsafe_allow_html=True,
         )
         if st.button("Deal Next Hand", key="next_hand_btn"):
-            _new_hand()
+            _new_hand(advance_button=True)
             st.rerun()
         return
 
@@ -993,6 +1030,7 @@ def render_playable_poker_tab() -> None:
     hero: int = st.session_state.hero
     table_placeholder = st.empty()
     controls_placeholder = st.empty()
+    status_placeholder = st.empty()
 
     # ── PILLAR 3: Strict execution order ──────────────────────────────────────
 
@@ -1010,6 +1048,7 @@ def render_playable_poker_tab() -> None:
         hero,
         table_placeholder=table_placeholder,
         controls_placeholder=controls_placeholder,
+        status_placeholder=status_placeholder,
     )
 
     # ── Step 4: Render (read-only from here down) ─────────────────────────────
@@ -1019,12 +1058,16 @@ def render_playable_poker_tab() -> None:
     with controls_placeholder.container():
         st.markdown("---")
         _render_hero_dashboard(view)
+    status_placeholder.empty()
 
     # Collapsible debug panel
     with st.expander("Debug", expanded=False):
         st.json(
             {
                 "hero_seat": hero,
+                "button_index": view.get("button_index"),
+                "sb_seat": view.get("sb_seat"),
+                "bb_seat": view.get("bb_seat"),
                 "turn_index": state.turn_index,
                 "is_hero_turn": view["is_hero_turn"],
                 "hand_complete": view["hand_complete"],
@@ -1040,5 +1083,5 @@ def render_playable_poker_tab() -> None:
         )
 
     if st.button("Restart (New Hand)", key="restart_btn"):
-        _new_hand()
+        _new_hand(advance_button=True)
         st.rerun()
