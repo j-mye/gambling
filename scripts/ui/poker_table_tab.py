@@ -327,6 +327,65 @@ def _phase_label(board_len: int) -> str:
     )
 
 
+def _phase_key_from_board(board_len: int) -> str:
+    return {0: "preflop", 3: "flop", 4: "turn", 5: "river"}.get(
+        board_len, "preflop"
+    )
+
+
+def _street_metric_label(phase_key: str) -> str:
+    return {
+        "preflop": "Pre-Flop Bets",
+        "flop": "Flop Bets",
+        "turn": "Turn Bets",
+        "river": "River Bets",
+    }.get(phase_key, "Street Bets")
+
+
+def _street_pot_breakdown(state: Any) -> dict[str, float]:
+    """Estimate pot contributions per street from PokerKit operation history."""
+    out = {"preflop": 0.0, "flop": 0.0, "turn": 0.0, "river": 0.0}
+    current_street = "preflop"
+    street_order = ["preflop", "flop", "turn", "river"]
+
+    for op in list(getattr(state, "operations", []) or []):
+        op_name = type(op).__name__
+        amount = getattr(op, "amount", None)
+        if amount is not None and op_name in {
+            "AntePosting",
+            "BlindOrStraddlePosting",
+            "CheckingOrCalling",
+            "CompletionBettingOrRaisingTo",
+        }:
+            out[current_street] += float(amount)
+
+        if op_name == "BoardDealing":
+            idx = street_order.index(current_street)
+            if idx < len(street_order) - 1:
+                current_street = street_order[idx + 1]
+
+    return out
+
+
+def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
+    """Return (street_bet, total_hand_bet) for the hero seat."""
+    bets = list(getattr(state, "bets", []) or [])
+    street_bet = float(bets[hero]) if hero < len(bets) else 0.0
+    total = 0.0
+    for op in list(getattr(state, "operations", []) or []):
+        if getattr(op, "player_index", None) != hero:
+            continue
+        amount = getattr(op, "amount", None)
+        if amount is not None and type(op).__name__ in {
+            "AntePosting",
+            "BlindOrStraddlePosting",
+            "CheckingOrCalling",
+            "CompletionBettingOrRaisingTo",
+        }:
+            total += float(amount)
+    return street_bet, total
+
+
 def _build_view(state: Any, hero: int) -> dict[str, Any]:
     hand_complete = not bool(getattr(state, "status", True))
     terminal = st.session_state.get("terminal_payload")
@@ -387,6 +446,11 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
             pass
 
     facing_bet = call_amount > 0
+    street_pots = _street_pot_breakdown(state)
+    hero_street_bet, hero_total_bet = _hero_commitment_metrics(state, hero)
+    phase_key = _phase_key_from_board(len(board_cards))
+    current_street_pot = float(street_pots.get(phase_key, 0.0))
+    current_street_label = _street_metric_label(phase_key)
 
     return {
         "hero": hero,
@@ -408,6 +472,11 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
         "max_raise": max_raise,
         "action_error": st.session_state.get("action_error", ""),
         "phase": _phase_label(len(board_cards)),
+        "street_pots": street_pots,
+        "current_street_pot": current_street_pot,
+        "current_street_label": current_street_label,
+        "hero_street_bet": hero_street_bet,
+        "hero_total_bet": hero_total_bet,
     }
 
 
@@ -484,22 +553,32 @@ def _render_table(view: dict[str, Any]) -> None:
     hero = view["hero"]
     opponents = [s for s in range(view["seat_count"]) if s != hero]
 
+    # Pot breakdown header – custom background, centered text
+    pot = view["pot_total"]
+    st.markdown(
+        f"<div style='text-align:center;margin:10px 0 8px 0;padding:12px;"
+        f"border:1px solid {theme.PANEL_BORDER};border-radius:12px;"
+        f"background:{theme.PANEL_BG};color:{theme.TEXT_LIGHT};'>"
+        f"<div style='display:flex;justify-content:center;gap:32px;margin-top:8px;'>"
+        f"  <div style='flex:1;text-align:center;'>"
+        f"    <div style='font-size:20px;color:{theme.TEXT_MUTED};margin-bottom:3px;'>Total Pot</div>"
+        f"    <div style='font-size:19px;font-weight:700;'>${pot:,.2f}</div>"
+        f"  </div>"
+        f"  <div style='flex:1;text-align:center;'>"
+        f"    <div style='font-size:20px;color:{theme.TEXT_MUTED};margin-bottom:3px;'>"
+        f"      {view.get('current_street_label', 'Street Bets')}</div>"
+        f"    <div style='font-size:19px;font-weight:700;'>"
+        f"      ${float(view.get('current_street_pot', 0.0)):,.2f}"
+        f"    </div>"
+        f"  </div>",
+        unsafe_allow_html=True,
+    )
+
     # Opponent row
     cols = st.columns(len(opponents))
     for i, seat in enumerate(opponents):
         with cols[i]:
             st.markdown(_seat_html(seat, view), unsafe_allow_html=True)
-
-    # Pot / phase banner
-    st.markdown(
-        f"<div style='text-align:center;margin:12px 0;padding:10px;"
-        f"border:1px solid {theme.PANEL_BORDER};border-radius:12px;"
-        f"background:{theme.PANEL_BG};color:{theme.TEXT_LIGHT};'>"
-        f"<div style='font-size:13px;color:{theme.TEXT_MUTED};'>{view['phase']}</div>"
-        f"<div style='font-size:26px;font-weight:700;'>Pot ${view['pot_total']:.0f}</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
 
     # Community board
     st.markdown(
@@ -507,8 +586,22 @@ def _render_table(view: dict[str, Any]) -> None:
         unsafe_allow_html=True,
     )
 
-    # Hero seat
-    st.markdown(_seat_html(hero, view), unsafe_allow_html=True)
+
+def _render_hero_dashboard(view: dict[str, Any]) -> None:
+    hero = view["hero"]
+    with st.container(border=True):
+        left, right = st.columns(2)
+
+        # Left half: same hero information block as before.
+        with left:
+            st.markdown(_seat_html(hero, view), unsafe_allow_html=True)
+            st.caption(
+                f"Street Bet: ${view['hero_street_bet']:.2f} | Total Hand Bet: ${view['hero_total_bet']:.2f}"
+            )
+
+        # Right half: nested action controls.
+        with right:
+            _render_controls(view)
 
 
 def _render_controls(view: dict[str, Any]) -> None:
@@ -543,19 +636,21 @@ def _render_controls(view: dict[str, Any]) -> None:
     call_label = f"Call  ${call_amount}" if facing else "Check"
     bet_label = "Raise To" if facing else "Bet"
 
-    col_fold, col_call, col_raise = st.columns([1, 1, 2])
+    passive_col, aggressive_col = st.columns([1, 1])
+    fold_row = passive_col.container()
+    call_row = passive_col.container()
 
-    with col_fold:
+    with fold_row:
         if st.button("Fold", use_container_width=True, key="btn_fold"):
             st.session_state.pending_action = {"type": "fold"}
             st.rerun()
 
-    with col_call:
+    with call_row:
         if st.button(call_label, use_container_width=True, key="btn_call"):
             st.session_state.pending_action = {"type": "call"}
             st.rerun()
 
-    with col_raise:
+    with aggressive_col:
         # Clamp default value inside [min_raise, max_raise] to avoid Streamlit error.
         default_raise = max(min_raise, min(min_raise, max_raise))
         raise_amount = st.number_input(
@@ -613,7 +708,7 @@ def render_playable_poker_tab() -> None:
     bot_status_placeholder.empty()
     with controls_placeholder.container():
         st.markdown("---")
-        _render_controls(view)
+        _render_hero_dashboard(view)
 
     # Collapsible debug panel
     with st.expander("Debug", expanded=False):
