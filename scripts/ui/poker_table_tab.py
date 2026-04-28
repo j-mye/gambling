@@ -27,6 +27,11 @@ from typing import Any
 import streamlit as st
 from pokerkit import Automation, NoLimitTexasHoldem
 
+from scripts.game.bot_backend import (
+    BasePokerBot,
+    build_bot_instances,
+    normalize_bot_response,
+)
 from scripts.ui import theme
 from scripts.ui.card_html import (
     poker_table_css,
@@ -131,10 +136,12 @@ def _new_hand(*, advance_button: bool) -> None:
     st.session_state.last_action = {}        # {seat_index: str} action badge text
     st.session_state.terminal_payload = None
     st.session_state.action_error = ""
+    st.session_state.bot_error = ""
     st.session_state.pop("pending_action", None)
     # Reset per-hand settlement guards for the newly created hand.
     st.session_state.hand_resolved = False
     st.session_state.resolved_hand_id = None
+    st.session_state.bot_instances = build_bot_instances(_N_PLAYERS, st.session_state.hero)
     # Deal hole cards immediately so the first render shows a live hand.
     _run_dealer(state)
 
@@ -151,8 +158,12 @@ def _ensure_initialized() -> None:
         st.session_state.hero = random.randrange(_N_PLAYERS)
     if "button_index" not in st.session_state:
         st.session_state.button_index = 0
+    if "bot_error" not in st.session_state:
+        st.session_state.bot_error = ""
     if "poker_state" not in st.session_state:
         _new_hand(advance_button=False)
+    if "bot_instances" not in st.session_state:
+        st.session_state.bot_instances = build_bot_instances(_N_PLAYERS, st.session_state.hero)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -222,6 +233,103 @@ def _render_live_snapshot(
             status_placeholder.empty()
 
 
+def _extract_bot_hole_cards(state: Any, seat: int) -> list[str]:
+    """Return active bot seat hole cards as normalized strings."""
+    try:
+        seat_cards = list((state.hole_cards or [])[seat] or [])
+    except Exception:
+        return []
+    cards: list[str] = []
+    for card in seat_cards:
+        parsed = _parse_card(card)
+        if parsed:
+            rank, suit = parsed
+            cards.append(f"{rank}{suit}")
+    return cards
+
+
+def _legal_moves_snapshot(state: Any, seat: int) -> dict[str, Any]:
+    """Capture legal move surface for the active bot seat."""
+    call_amount = 0
+    min_raise_to: int | None = None
+    max_raise_to: int | None = None
+    try:
+        call_amount = int(getattr(state, "checking_or_calling_amount", 0) or 0)
+    except Exception:
+        call_amount = 0
+    try:
+        val = getattr(state, "min_completion_betting_or_raising_to_amount", None)
+        min_raise_to = int(val) if val is not None else None
+    except Exception:
+        min_raise_to = None
+    try:
+        val = getattr(state, "max_completion_betting_or_raising_to_amount", None)
+        max_raise_to = int(val) if val is not None else None
+    except Exception:
+        max_raise_to = None
+    return {
+        "seat": seat,
+        "turn_index": getattr(state, "turn_index", None),
+        "facing_bet": call_amount > 0,
+        "call_amount": call_amount,
+        "can_fold": bool(state.can_fold()),
+        "can_check_or_call": bool(state.can_check_or_call()),
+        "can_raise": min_raise_to is not None and max_raise_to is not None,
+        "min_raise_to": min_raise_to,
+        "max_raise_to": max_raise_to,
+    }
+
+
+def _execute_bot_action(
+    state: Any,
+    seat: int,
+    action: str,
+    amount: int,
+    legal_moves: dict[str, Any],
+) -> str:
+    """Execute validated bot action against PokerKit state and return action label."""
+    if action == "FOLD":
+        if state.can_fold():
+            state.fold()
+            return "Fold"
+        raise ValueError("Illegal FOLD")
+
+    if action in {"CALL", "CHECK"}:
+        if state.can_check_or_call():
+            call_amount = int(legal_moves.get("call_amount", 0) or 0)
+            state.check_or_call()
+            return f"Call ${call_amount}" if call_amount > 0 else "Check"
+        raise ValueError("Illegal CHECK/CALL")
+
+    if action in {"RAISE", "BET"}:
+        min_raise_to = legal_moves.get("min_raise_to")
+        max_raise_to = legal_moves.get("max_raise_to")
+        if min_raise_to is None or max_raise_to is None:
+            raise ValueError("Raise bounds unavailable")
+        target = int(amount)
+        if target < int(min_raise_to) or target > int(max_raise_to):
+            raise ValueError("Raise amount out of bounds")
+        if state.can_complete_bet_or_raise_to(target):
+            state.complete_bet_or_raise_to(target)
+            facing = bool(legal_moves.get("facing_bet", False))
+            return f"Raise ${target}" if facing else f"Bet ${target}"
+        raise ValueError("Illegal RAISE/BET")
+
+    raise ValueError(f"Unsupported action {action}")
+
+
+def _force_safe_bot_fallback(state: Any) -> str:
+    """Non-crashing fallback if bot returns illegal/hallucinated output."""
+    if state.can_fold():
+        state.fold()
+        return "Fold"
+    if state.can_check_or_call():
+        call_amount = int(getattr(state, "checking_or_calling_amount", 0) or 0)
+        state.check_or_call()
+        return f"Call ${call_amount}" if call_amount > 0 else "Check"
+    return "NoOp"
+
+
 def _run_bots_to_hero(
     state: Any,
     hero: int,
@@ -268,44 +376,32 @@ def _run_bots_to_hero(
             )
             time.sleep(1.5)
 
-        # ── Bot's turn ───────────────────────────────────────────────────────
-        # Ask PokerKit what is legal, then pick from that exact list.
-        # can_check_or_call() covers both "check" (no bet to face) and "call"
-        # (facing a bet), so it handles every non-aggressive betting action.
+        # ── Bot's turn via backend interface ─────────────────────────────────
         action_text = ""
-        if state.can_check_or_call():
-            facing = state.checking_or_calling_amount > 0
-            # 80 % call / check, 20 % fold (only when actually facing a bet).
-            if facing and random.random() < 0.20 and state.can_fold():
-                state.fold()
-                st.session_state.last_action[ti] = "Fold"
-                action_text = f"Seat {ti + 1} folds."
-            else:
-                call_amount = int(state.checking_or_calling_amount or 0)
-                state.check_or_call()
-                st.session_state.last_action[ti] = (
-                    f"Call ${call_amount}"
-                    if facing
-                    else "Check"
-                )
-                action_text = (
-                    f"Seat {ti + 1} calls ${call_amount}."
-                    if facing
-                    else f"Seat {ti + 1} checks."
-                )
-        elif state.can_fold():
-            # Fallback – should rarely trigger but guarantees forward progress.
-            state.fold()
-            st.session_state.last_action[ti] = "Fold"
-            action_text = f"Seat {ti + 1} folds."
-        else:
-            # No legal betting action available on a live turn.
-            # This should not happen with the chosen automations, but break
-            # rather than spin forever.
-            st.session_state.action_error = (
-                f"Seat {ti + 1} has no legal action – structural stall."
+        legal_moves = _legal_moves_snapshot(state, ti)
+        hole_cards = _extract_bot_hole_cards(state, ti)
+        bots: dict[int, BasePokerBot] = st.session_state.get("bot_instances", {})
+        bot = bots.get(ti)
+        if bot is None:
+            bots = build_bot_instances(_N_PLAYERS, hero)
+            st.session_state.bot_instances = bots
+            bot = bots.get(ti)
+
+        try:
+            if bot is None:
+                raise ValueError("Missing bot instance")
+            raw_response = bot.calculate_action(state, hole_cards, legal_moves)
+            action, amount = normalize_bot_response(raw_response)
+            label = _execute_bot_action(state, ti, action, amount, legal_moves)
+            st.session_state.last_action[ti] = label
+            action_text = f"Seat {ti + 1} {label.lower()}."
+        except Exception as exc:
+            st.session_state.bot_error = (
+                f"Seat {ti + 1} hallucinated illegal move: {exc}"
             )
-            break
+            fallback_label = _force_safe_bot_fallback(state)
+            st.session_state.last_action[ti] = fallback_label
+            action_text = f"Seat {ti + 1} {fallback_label.lower()}."
 
         # Render the action result, then brief pause so users can register it.
         if (
@@ -655,6 +751,7 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
         "button_index": button_index,
         "sb_seat": (button_index + 1) % _N_PLAYERS,
         "bb_seat": (button_index + 2) % _N_PLAYERS,
+        "bot_error": st.session_state.get("bot_error", ""),
     }
 
 
@@ -1079,6 +1176,7 @@ def render_playable_poker_tab() -> None:
                 "pot": view["pot_total"],
                 "payoffs": view["payoffs"],
                 "last_action": view["last_action"],
+                "bot_error": view.get("bot_error", ""),
             }
         )
 
