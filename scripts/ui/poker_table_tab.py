@@ -386,6 +386,32 @@ def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
     return street_bet, total
 
 
+def _live_pot_metrics(state: Any) -> tuple[float, float]:
+    """Compute (total_pot, current_street_pot) from live PokerKit state."""
+    active_bets = float(sum(list(getattr(state, "bets", []) or [])))
+    finalized_pots = 0.0
+
+    # Prefer explicit pot objects if available.
+    pots = getattr(state, "pots", None)
+    if pots is not None:
+        try:
+            for pot in pots:
+                finalized_pots += float(getattr(pot, "amount", 0) or 0)
+        except Exception:
+            finalized_pots = 0.0
+
+    # Fallback for engines exposing pushed amounts directly.
+    if finalized_pots <= 0.0:
+        try:
+            finalized_pots = float(getattr(state, "total_pushed_amount", 0) or 0)
+        except Exception:
+            finalized_pots = 0.0
+
+    total_pot = finalized_pots + active_bets
+    current_street_pot = active_bets
+    return total_pot, current_street_pot
+
+
 def _build_view(state: Any, hero: int) -> dict[str, Any]:
     hand_complete = not bool(getattr(state, "status", True))
     terminal = st.session_state.get("terminal_payload")
@@ -417,11 +443,7 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
     ti = state.turn_index
     is_hero_turn = bool(ti == hero and state.status)
 
-    pot = float(sum(bets))
-    try:
-        pot += float(getattr(state, "total_pushed_amount", 0) or 0)
-    except Exception:
-        pass
+    live_total_pot, live_current_street_pot = _live_pot_metrics(state)
 
     # Legal snapshot (only meaningful when it is the hero's turn).
     call_amount = 0
@@ -449,7 +471,9 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
     street_pots = _street_pot_breakdown(state)
     hero_street_bet, hero_total_bet = _hero_commitment_metrics(state, hero)
     phase_key = _phase_key_from_board(len(board_cards))
-    current_street_pot = float(street_pots.get(phase_key, 0.0))
+    # Bind the visible metric to live active bets so it always updates with the
+    # current betting round. Keep street breakdown as secondary/debug context.
+    current_street_pot = live_current_street_pot
     current_street_label = _street_metric_label(phase_key)
 
     return {
@@ -457,7 +481,7 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
         "seat_count": _N_PLAYERS,
         "stacks": display_stacks,
         "bets": bets,
-        "pot_total": pot,
+        "pot_total": live_total_pot,
         "board_cards": board_cards,
         "hole_by_seat": hole_by_seat,
         "folded": folded,
@@ -617,13 +641,6 @@ def _render_controls(view: dict[str, Any]) -> None:
             st.rerun()
         return
 
-    # ── Waiting for a bot ────────────────────────────────────────────────────
-    if not view["is_hero_turn"]:
-        ti = view["turn_index"]
-        label = f"Seat {ti + 1}" if ti is not None else "the engine"
-        st.info(f"Waiting for {label} to act…")
-        return
-
     # ── Hero's controls ───────────────────────────────────────────────────────
     if view["action_error"]:
         st.error(view["action_error"])
@@ -635,6 +652,7 @@ def _render_controls(view: dict[str, Any]) -> None:
 
     call_label = f"Call ${call_amount}" if facing else "Check"
     bet_label = "Raise To" if facing else "Bet"
+    controls_disabled = (not view["is_hero_turn"]) or view["hand_complete"]
 
     st.markdown(
         """
@@ -670,10 +688,20 @@ div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[
     passive_col, aggressive_col = st.columns([1, 1])
 
     with passive_col:
-        if st.button("Fold", use_container_width=True, key="btn_fold"):
+        if st.button(
+            "Fold",
+            use_container_width=True,
+            key="btn_fold",
+            disabled=controls_disabled,
+        ):
             st.session_state.pending_action = {"type": "fold"}
             st.rerun()
-        if st.button(call_label, use_container_width=True, key="btn_call"):
+        if st.button(
+            call_label,
+            use_container_width=True,
+            key="btn_call",
+            disabled=controls_disabled,
+        ):
             st.session_state.pending_action = {"type": "call"}
             st.rerun()
 
@@ -683,7 +711,12 @@ div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[
         submit_label = (
             f"{bet_label} ${int(st.session_state.get('raise_input', default_raise))}"
         )
-        if st.button(submit_label, use_container_width=True, key="btn_raise"):
+        if st.button(
+            submit_label,
+            use_container_width=True,
+            key="btn_raise",
+            disabled=controls_disabled,
+        ):
             st.session_state.pending_action = {
                 "type": "raise",
                 "amount": int(st.session_state.get("raise_input", default_raise)),
@@ -697,7 +730,12 @@ div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[
             step=1,
             key="raise_input",
             label_visibility="collapsed",
+            disabled=controls_disabled,
         )
+        if not view["is_hero_turn"] and not view["hand_complete"]:
+            ti = view["turn_index"]
+            label = f"Seat {ti + 1}" if ti is not None else "the engine"
+            st.caption(f"Waiting for {label} to act…")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
