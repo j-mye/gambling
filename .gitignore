@@ -1,0 +1,132 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+*.whl
+*.manifest
+*.spec
+
+# Virtual environments
+venv/
+env/
+.venv/
+.pyenv/
+venv.bak/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Jupyter Notebook output
+*.nbconvert.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# Data files
+data/raw/
+data/rawish/
+data/processed/
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.json
+*.parquet
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# Logs
+*.log
+logs/
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# PyCharm
+.idea/
+*.iml
+workspace.xml
+
+# Local config
+*.env
+.env
+.env.*
+
+# Notebook checkpoints and outputs
+**/.ipynb_checkpoints
+
+# Python coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+
+# MyPy
+.mypy_cache/
+
+# Cython debug symbols
+cython_debug/
+
+# Build tools
+pip-wheel-metadata/
+
+# PokerKit dependencies and build artifacts
+pokerkit/build/
+pokerkit/dist/
+
+# OneDrive auto-generated
+~$*
+
+# Ignore generated files from editors or system
+*.bak
+*.tmp
+*.orig
+
+# Ignore local notebook metadata / checkpoint files
+*.ipynb_checkpoints
+
+# Ignore Python virtual environment lock files and caches
+pip-log.txt
+
+# Ignore local runtime files
+.python-version
+
+# Exclude data files from repo unless intentionally tracked
+# (uncomment if you want to track specific datasets)
+# /data/raw/*.csv
+# /data/processed/*.csv
