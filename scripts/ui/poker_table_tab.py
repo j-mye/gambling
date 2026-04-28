@@ -633,19 +633,46 @@ def _render_controls(view: dict[str, Any]) -> None:
     min_raise = view["min_raise"]
     max_raise = view["max_raise"]
 
-    call_label = f"Call  ${call_amount}" if facing else "Check"
+    call_label = f"Call ${call_amount}" if facing else "Check"
     bet_label = "Raise To" if facing else "Bet"
 
-    passive_col, aggressive_col = st.columns([1, 1])
-    fold_row = passive_col.container()
-    call_row = passive_col.container()
+    st.markdown(
+        """
+<style>
+/* Scoped only to this action panel via marker + :has */
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) {
+  min-height: 240px;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="column"] {
+  min-height: 240px;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Fold"] {
+  height: 120px !important;         /* 50% of passive column */
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Check / Call"] {
+  height: 120px !important;         /* 50% of passive column */
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Submit Bet / Raise"] {
+  height: 192px !important;         /* 80% of aggressive column */
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="stNumberInput"] {
+  width: 100% !important;
+}
+</style>
+<div class="hero-action-controls-scope"></div>
+""",
+        unsafe_allow_html=True,
+    )
 
-    with fold_row:
+    passive_col, aggressive_col = st.columns([1, 1])
+
+    with passive_col:
         if st.button("Fold", use_container_width=True, key="btn_fold"):
             st.session_state.pending_action = {"type": "fold"}
             st.rerun()
-
-    with call_row:
         if st.button(call_label, use_container_width=True, key="btn_call"):
             st.session_state.pending_action = {"type": "call"}
             st.rerun()
@@ -653,19 +680,24 @@ def _render_controls(view: dict[str, Any]) -> None:
     with aggressive_col:
         # Clamp default value inside [min_raise, max_raise] to avoid Streamlit error.
         default_raise = max(min_raise, min(min_raise, max_raise))
-        raise_amount = st.number_input(
+        submit_label = (
+            f"{bet_label} ${int(st.session_state.get('raise_input', default_raise))}"
+        )
+        if st.button(submit_label, use_container_width=True, key="btn_raise"):
+            st.session_state.pending_action = {
+                "type": "raise",
+                "amount": int(st.session_state.get("raise_input", default_raise)),
+            }
+            st.rerun()
+        st.number_input(
             bet_label,
             min_value=min_raise,
             max_value=max(min_raise, max_raise),
             value=default_raise,
             step=1,
             key="raise_input",
+            label_visibility="collapsed",
         )
-        if st.button(
-            f"{bet_label}  ${raise_amount}", use_container_width=True, key="btn_raise"
-        ):
-            st.session_state.pending_action = {"type": "raise", "amount": raise_amount}
-            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
