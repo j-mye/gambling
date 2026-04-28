@@ -59,6 +59,26 @@ _MIN_BET = 2
 # PILLAR 1 – SETUP
 # ══════════════════════════════════════════════════════════════════════════════
 
+
+def _normalize_bankrolls(raw: Any) -> list[int]:
+    """Return a safe bankroll list sized to _N_PLAYERS."""
+    base = [_STARTING_STACK] * _N_PLAYERS
+    if not isinstance(raw, (list, tuple)):
+        return base
+
+    out: list[int] = []
+    for i in range(_N_PLAYERS):
+        if i < len(raw):
+            try:
+                out.append(int(round(float(raw[i]))))
+            except Exception:
+                out.append(base[i])
+        else:
+            out.append(base[i])
+
+    # Prevent invalid negative stack values from poisoning new hands.
+    return [max(0, v) for v in out]
+
 def _deck_from_state(state: Any) -> list[str]:
     """Extract PokerKit's pre-shuffled internal deck as our session deck.
 
@@ -75,13 +95,18 @@ def _deck_from_state(state: Any) -> list[str]:
 
 def _new_hand() -> None:
     """Create a fresh game and deal hole cards."""
+    bankrolls = _normalize_bankrolls(
+        st.session_state.get("master_bankrolls", [_STARTING_STACK] * _N_PLAYERS)
+    )
+    st.session_state.master_bankrolls = bankrolls
+
     state = NoLimitTexasHoldem.create_state(
         _AUTOMATIONS,
         True,                           # uniform_antes
         0,                              # raw_antes
         _BLINDS,                        # raw_blinds_or_straddles
         _MIN_BET,                       # min_bet
-        (_STARTING_STACK,) * _N_PLAYERS,
+        tuple(bankrolls),
         _N_PLAYERS,
     )
     st.session_state.poker_state = state
@@ -91,11 +116,21 @@ def _new_hand() -> None:
     st.session_state.terminal_payload = None
     st.session_state.action_error = ""
     st.session_state.pop("pending_action", None)
+    # Reset per-hand settlement guards for the newly created hand.
+    st.session_state.hand_resolved = False
+    st.session_state.resolved_hand_id = None
     # Deal hole cards immediately so the first render shows a live hand.
     _run_dealer(state)
 
 
 def _ensure_initialized() -> None:
+    st.session_state.master_bankrolls = _normalize_bankrolls(
+        st.session_state.get("master_bankrolls", [_STARTING_STACK] * _N_PLAYERS)
+    )
+    if "hand_resolved" not in st.session_state:
+        st.session_state.hand_resolved = False
+    if "resolved_hand_id" not in st.session_state:
+        st.session_state.resolved_hand_id = None
     if "poker_state" not in st.session_state:
         _new_hand()
 
@@ -286,13 +321,36 @@ def _apply_hero_action(state: Any, action: dict[str, Any], hero: int) -> None:
 
 def _capture_terminal(state: Any) -> None:
     """Persist payoffs once when the hand ends."""
-    if st.session_state.get("terminal_payload") is not None:
-        return
+    hand_id = id(state)
+
     try:
         payoffs = list(state.payoffs or [])
         stacks = list(state.stacks or [])
     except Exception:
         payoffs, stacks = [], []
+
+    # Apply payout exactly once per hand across reruns.
+    already_resolved = bool(st.session_state.get("hand_resolved", False))
+    resolved_hand_id = st.session_state.get("resolved_hand_id")
+    if (not already_resolved) and (resolved_hand_id != hand_id):
+        bankrolls = _normalize_bankrolls(
+            st.session_state.get("master_bankrolls", [_STARTING_STACK] * _N_PLAYERS)
+        )
+        updated = bankrolls[:]
+        for i in range(_N_PLAYERS):
+            delta = 0.0
+            if i < len(payoffs):
+                try:
+                    delta = float(payoffs[i] or 0)
+                except Exception:
+                    delta = 0.0
+            updated[i] = max(0, int(round(updated[i] + delta)))
+        st.session_state.master_bankrolls = updated
+        st.session_state.hand_resolved = True
+        st.session_state.resolved_hand_id = hand_id
+
+    if st.session_state.get("terminal_payload") is not None:
+        return
     st.session_state.terminal_payload = {"payoffs": payoffs, "stacks": stacks}
 
 
