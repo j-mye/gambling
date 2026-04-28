@@ -301,18 +301,59 @@ def _capture_terminal(state: Any) -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _parse_card(card_obj: Any) -> tuple[str, str] | None:
-    """Convert a PokerKit card object to (rank, suit) for HTML rendering."""
-    s = str(card_obj)
-    # Verbose format: 'SIX OF HEARTS (6h)' → extract token in parens.
+    """Convert a card-like value into normalized (rank, suit) tuple.
+
+    Accepts PokerKit Card objects and card strings in either verbose form
+    ('ACE OF SPADES (As)') or compact token form ('As', '10h'), including
+    noisy wrappers like list/tuple string repr fragments.
+    """
+    s = str(card_obj or "")
+    token: str | None = None
+
+    # Preferred: verbose PokerKit representation with token in parentheses.
     m = re.search(r"\((\w+)\)", s)
-    token = m.group(1) if m else s.strip()
-    if len(token) < 2:
+    if m:
+        token = m.group(1)
+    else:
+        # Fallback: compact token anywhere in the string (handles noisy reprs).
+        m2 = re.search(r"(?i)\b(10|[2-9tjqka])([cdhs])\b", s)
+        if m2:
+            token = f"{m2.group(1)}{m2.group(2)}"
+
+    if not token:
         return None
+
     rank = token[:-1].upper()
     suit = token[-1].upper()
     if rank == "10":
         rank = "T"
+    if suit not in {"C", "D", "H", "S"} or rank not in {
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "T",
+        "J",
+        "Q",
+        "K",
+        "A",
+    }:
+        return None
     return rank, suit
+
+
+def _parse_card_list(cards: Any) -> list[tuple[str, str]]:
+    """Parse a sequence of card-like values to normalized (rank, suit) tuples."""
+    parsed: list[tuple[str, str]] = []
+    for card in list(cards or []):
+        p = _parse_card(card)
+        if p:
+            parsed.append(p)
+    return parsed
 
 
 def _phase_label(board_len: int) -> str:
@@ -416,20 +457,12 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
     # Use final stacks from terminal snapshot when hand is over.
     display_stacks = terminal["stacks"] if (terminal and hand_complete) else stacks
 
-    board_cards: list[tuple[str, str]] = []
-    for card in state.board_cards or []:
-        p = _parse_card(card)
-        if p:
-            board_cards.append(p)
+    # Board and hole cards use the same parser pipeline to keep formats aligned.
+    board_cards = _parse_card_list(state.board_cards)
 
     hole_by_seat: list[list[tuple[str, str]]] = []
     for seat_cards in state.hole_cards or []:
-        parsed: list[tuple[str, str]] = []
-        for card in seat_cards:
-            p = _parse_card(card)
-            if p:
-                parsed.append(p)
-        hole_by_seat.append(parsed)
+        hole_by_seat.append(_parse_card_list(seat_cards))
 
     # statuses: True = still active, False = folded/eliminated.
     folded = [not bool(s) for s in (state.statuses or [])]
@@ -540,7 +573,14 @@ def _seat_html(seat: int, view: dict[str, Any]) -> str:
     if is_hero:
         cards_html = "".join(render_face_up_card(r, s) for r, s in hole)
     else:
-        cards_html = "".join(render_face_down_card() for _ in range(len(hole) or 2))
+        # Showdown reveal rule:
+        # - Hand complete + opponent not folded => reveal real hole cards.
+        # - Folded opponents remain face-down (and are already grayed by seat class).
+        reveal_at_showdown = bool(view["hand_complete"] and not folded)
+        if reveal_at_showdown:
+            cards_html = "".join(render_face_up_card(r, s) for r, s in hole)
+        else:
+            cards_html = "".join(render_face_down_card() for _ in range(len(hole) or 2))
 
     return (
         f"<div class='{seat_class}' style='position:relative;'>"
@@ -554,17 +594,33 @@ def _seat_html(seat: int, view: dict[str, Any]) -> str:
 
 def _board_html(view: dict[str, Any]) -> str:
     board = view["board_cards"]
-    slots: list[str] = []
+    slot_html: list[str] = []
+    # 5-slot rule: always render exactly five board positions.
     for i in range(5):
         if i < len(board):
             rank, suit = board[i]
-            inner = render_face_up_card(
-                rank, suit, classes=f"community-card deal-animate deal-delay-{i}"
+            slot_html.append(
+                "<div class='board-slot card' style='width:72px;height:104px;'>"
+                + render_face_up_card(
+                    rank, suit, classes=f"community-card deal-animate deal-delay-{i}"
+                )
+                + "</div>"
             )
-            slots.append(f"<div class='board-slot'>{inner}</div>")
         else:
-            slots.append("<div class='board-slot placeholder'></div>")
-    return "<div class='board-row-fixed'>" + "".join(slots) + "</div>"
+            slot_html.append(
+                "<div class='board-slot'>"
+                "<div class='card placeholder' "
+                "style='width:72px;height:104px;border:1px dashed rgba(130,154,177,0.85);"
+                "border-radius:12px;background:rgba(15,23,42,0.25);"
+                "box-shadow:inset 0 0 0 1px rgba(188,204,220,0.2);'></div>"
+                "</div>"
+            )
+    return (
+        "<div class='board-row-fixed' "
+        "style='display:flex;justify-content:center;gap:10px;width:100%;align-items:center;'>"
+        + "".join(slot_html)
+        + "</div>"
+    )
 
 
 def _render_table(view: dict[str, Any]) -> None:
