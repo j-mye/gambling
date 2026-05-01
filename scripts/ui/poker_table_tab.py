@@ -27,11 +27,13 @@ from typing import Any
 import streamlit as st
 from pokerkit import Automation, NoLimitTexasHoldem
 
+from scripts.features.poker_hand_strength import build_stage_feature_payload
 from scripts.game.bot_backend import (
     BasePokerBot,
     build_bot_instances,
     normalize_bot_response,
 )
+from scripts.models.stage_win_predictor import predict_stage_win_probability
 from scripts.ui import theme
 from scripts.ui.card_html import (
     poker_table_css,
@@ -638,6 +640,46 @@ def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
     return street_bet, total
 
 
+def _hero_raise_count(state: Any, hero: int) -> int:
+    """Count hero raises/bets (completion operations) so far in hand."""
+    count = 0
+    for op in list(getattr(state, "operations", []) or []):
+        if getattr(op, "player_index", None) != hero:
+            continue
+        if type(op).__name__ == "CompletionBettingOrRaisingTo":
+            count += 1
+    return count
+
+
+def _hero_street_bets_count(state: Any, hero: int) -> int:
+    """Count how many streets the hero has invested chips in."""
+    streets = ["preflop", "flop", "turn", "river"]
+    current_street = "preflop"
+    invested = {street: 0.0 for street in streets}
+
+    for op in list(getattr(state, "operations", []) or []):
+        op_name = type(op).__name__
+        if op_name == "BoardDealing":
+            idx = streets.index(current_street)
+            if idx < len(streets) - 1:
+                current_street = streets[idx + 1]
+            continue
+        if getattr(op, "player_index", None) != hero:
+            continue
+        amount = getattr(op, "amount", None)
+        if amount is None:
+            continue
+        if op_name in {
+            "AntePosting",
+            "BlindOrStraddlePosting",
+            "CheckingOrCalling",
+            "CompletionBettingOrRaisingTo",
+        }:
+            invested[current_street] += float(amount)
+
+    return sum(1 for value in invested.values() if value > 0)
+
+
 def _live_pot_metrics(state: Any) -> tuple[float, float]:
     """Compute (total_pot, current_street_pot) from live PokerKit state."""
     active_bets = float(sum(list(getattr(state, "bets", []) or [])))
@@ -662,6 +704,14 @@ def _live_pot_metrics(state: Any) -> tuple[float, float]:
     total_pot = finalized_pots + active_bets
     current_street_pot = active_bets
     return total_pot, current_street_pot
+
+
+def _risk_band(value: float) -> str:
+    if value >= 0.65:
+        return "High"
+    if value >= 0.35:
+        return "Medium"
+    return "Low"
 
 
 def _build_view(state: Any, hero: int) -> dict[str, Any]:
@@ -715,8 +765,38 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
     street_pots = _street_pot_breakdown(state)
     hero_street_bet, hero_total_bet = _hero_commitment_metrics(state, hero)
     phase_key = _phase_key_from_board(len(board_cards))
+    hero_cards = hole_by_seat[hero] if hero < len(hole_by_seat) else []
+    hole_tokens = [f"{rank}{suit.lower()}" for rank, suit in hero_cards]
+    board_tokens = [f"{rank}{suit.lower()}" for rank, suit in board_cards]
     button_index = int(st.session_state.get("button_index", 0)) % _N_PLAYERS
     seat_roles = _seat_role_map(button_index, _N_PLAYERS)
+    hero_position = seat_roles.get(hero, "")
+    hero_stack = float(stacks[hero]) if hero < len(stacks) else 0.0
+    table_stacks = [float(s) for s in stacks]
+    big_blind = float(_BLINDS[1]) if len(_BLINDS) > 1 else 2.0
+    model_features = build_stage_feature_payload(
+        phase_key,
+        hole_tokens,
+        board_tokens,
+        total_bet=float(hero_total_bet),
+        current_pot=float(live_total_pot),
+        position=hero_position,
+        hero_stack=hero_stack,
+        table_stacks=table_stacks,
+        big_blind=big_blind,
+    )
+    win_probability: float | None = None
+    prediction_error = ""
+    try:
+        win_probability = predict_stage_win_probability(phase_key, model_features)
+    except Exception as exc:
+        prediction_error = str(exc)
+    board_risk = float(model_features.get("board_shared_strength_risk", 0.0))
+    adjusted_aggression = (
+        float(win_probability) - (0.35 * board_risk)
+        if win_probability is not None
+        else None
+    )
     # Bind the visible metric to live active bets so it always updates with the
     # current betting round. Keep street breakdown as secondary/debug context.
     current_street_pot = live_current_street_pot
@@ -752,6 +832,12 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
         "sb_seat": (button_index + 1) % _N_PLAYERS,
         "bb_seat": (button_index + 2) % _N_PLAYERS,
         "bot_error": st.session_state.get("bot_error", ""),
+        "win_probability": win_probability,
+        "prediction_error": prediction_error,
+        "prediction_stage": phase_key,
+        "board_shared_strength_risk": board_risk,
+        "board_risk_band": _risk_band(board_risk),
+        "adjusted_aggression": adjusted_aggression,
     }
 
 
@@ -887,6 +973,22 @@ def _render_hero_dashboard(
             st.caption(
                 f"Street Bet: ${view['hero_street_bet']:.2f} | Total Hand Bet: ${view['hero_total_bet']:.2f}"
             )
+            win_probability = view.get("win_probability")
+            if win_probability is not None:
+                st.metric(
+                    "Win Chance",
+                    f"{float(win_probability):.2%}",
+                    help=f"Model stage: {view.get('prediction_stage', 'preflop')}",
+                )
+                st.caption(
+                    f"Shared-board risk: {view.get('board_risk_band', 'Low')} ({float(view.get('board_shared_strength_risk', 0.0)):.2f})"
+                )
+                adj = view.get("adjusted_aggression")
+                if adj is not None:
+                    style = "Aggressive" if float(adj) >= 0.6 else ("Cautious" if float(adj) <= 0.4 else "Balanced")
+                    st.caption(f"Risk-adjusted posture: {style}")
+            elif view.get("prediction_error"):
+                st.caption(f"Win chance unavailable: {view['prediction_error']}")
 
         # Right half: nested action controls.
         with right:
