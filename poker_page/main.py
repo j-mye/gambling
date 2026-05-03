@@ -152,13 +152,17 @@ def update_ui() -> None:
             board.innerHTML = poker_core._board_html(view)
 
     eng_order = _engines_ui_order(hero)
-    ti_raw = view.get("turn_index")
-    ti_int: int | None = int(ti_raw) if ti_raw is not None else None
+    ti_active = poker_core.live_turn_seat(state)
     for ui_slot, engine_seat in enumerate(eng_order):
         inner = _el(f"seat-inner-{ui_slot}")
         if inner is None:
             continue
-        is_active = (ti_int == int(engine_seat)) and not view["hand_complete"]
+        es = int(engine_seat) % 6
+        is_active = (
+            not view["hand_complete"]
+            and ti_active is not None
+            and ti_active == es
+        )
 
         nm = _el(f"seat-name-{ui_slot}")
         if nm is not None:
@@ -178,11 +182,21 @@ def update_ui() -> None:
             else False
         )
         icls = inner.className or ""
-        parts = [c for c in icls.split() if c and c not in ("seat-folded", "active-turn")]
+        parts = [
+            c
+            for c in icls.split()
+            if c and c not in ("seat-folded", "active-turn", "winner", "loser")
+        ]
         if folded_now:
             parts.append("seat-folded")
         if is_active:
             parts.append("active-turn")
+        if view.get("hand_complete"):
+            payoffs = view.get("payoffs") or []
+            if engine_seat < len(payoffs) and float(payoffs[engine_seat]) > 0:
+                parts.append("winner")
+            elif engine_seat < len(payoffs):
+                parts.append("loser")
         inner.className = " ".join(parts).strip()
 
         blf = _el(f"seat-bluff-{ui_slot}")
@@ -250,10 +264,6 @@ def update_ui() -> None:
     if wp_el is not None:
         wp = view.get("win_probability")
         wp_el.innerText = f"{float(wp) * 100:.1f}%" if wp is not None else "—"
-
-    gb = _el("gto-bar")
-    if gb is not None:
-        gb.innerHTML = coach_engine.gto_bar_html(view)
 
     ct = _el("coach-text")
     if ct is not None:
@@ -339,16 +349,15 @@ async def run_bots() -> None:
             if not ps.status:
                 poker_core.capture_terminal_if_needed(state)
                 break
-            ti = ps.turn_index
+            ti = poker_core.live_turn_seat(state)
             if ti is None:
                 break
             if ti == int(state.hero):
                 break
             update_ui()
-            await asyncio.sleep(0.15)
             poker_core.run_one_bot_turn(state)
             update_ui()
-            await asyncio.sleep(0.08)
+            await asyncio.sleep(1.0)
     finally:
         state.bots_running = False
         _set_controls_disabled(False)

@@ -282,21 +282,20 @@
 </div>
 <div id="hand-over-banner" class="hidden w-full max-w-md px-3 py-2 rounded-lg border border-emerald-500/50 bg-slate-900/90 text-emerald-400 text-sm font-bold text-center"></div>
 </div>
-<!-- Middle: GTO Analysis Stats -->
-<div class="app-footer-col min-w-0 flex flex-col gap-2 px-0 sm:px-[clamp(0.35rem,1.2vw,1rem)] border-slate-800 sm:border-r py-1 justify-center">
-<div class="grid grid-cols-3 gap-4">
-<div class="bg-surface-container-high border border-outline-variant p-2 rounded-lg">
-<span class="text-[10px] text-slate-400 uppercase">Win probability</span>
-<div id="stat-win-prob" class="font-display-mono text-emerald-500 font-semibold text-[clamp(0.85rem,2.5vmin,1.2rem)]">—</div>
+<!-- Middle: win probability + coach (50% / 50%, full column height) -->
+<div class="app-footer-col app-footer-middle-stats min-w-0 h-full min-h-0 flex flex-col px-0 sm:px-[clamp(0.35rem,1.2vw,1rem)] border-slate-800 sm:border-r py-1">
+<div class="app-footer-analytics-row">
+<div class="app-footer-analytics-half bg-surface-container-high border border-outline-variant rounded-lg p-2 min-h-0">
+<span class="app-footer-analytics-label text-slate-400 uppercase tracking-wide shrink-0">Win probability</span>
+<div id="stat-win-prob" class="app-footer-win-prob-value font-display-mono text-emerald-500 font-semibold">—</div>
 </div>
-<div class="col-span-2 bg-surface-container-high border border-outline-variant p-2 rounded-lg">
-<span class="text-[10px] text-slate-400 uppercase mb-1 block">Optimal Strategy Distribution</span>
-<div id="gto-bar" class="w-full bg-slate-800 rounded overflow-hidden flex font-bold text-[clamp(9px,1.5vmin,11px)] h-[clamp(1.25rem,3dvh,1.5rem)]"></div>
+<div class="app-footer-analytics-half app-footer-coach-panel bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2 min-h-0 flex flex-col">
+<span class="app-footer-analytics-label text-slate-400 uppercase tracking-wide shrink-0">Coach</span>
+<div class="app-footer-coach-body flex flex-1 min-h-0 gap-2 overflow-hidden">
+<span class="material-symbols-outlined text-emerald-500 text-sm shrink-0 mt-0.5">lightbulb</span>
+<p id="coach-text" class="app-footer-coach-text text-slate-300 leading-snug min-h-0 flex-1 overflow-y-auto"></p>
 </div>
 </div>
-<div class="bg-emerald-500/5 border border-emerald-500/20 p-2 rounded-lg flex items-start gap-3">
-<span class="material-symbols-outlined text-emerald-500 text-sm mt-0.5">lightbulb</span>
-<p id="coach-text" class="text-[11px] text-slate-300 leading-tight"></p>
 </div>
 </div>
 <!-- Right: Betting controls + next hand -->

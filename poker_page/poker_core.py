@@ -303,7 +303,7 @@ def run_one_bot_turn(gs: GameState) -> None:
     if state is None:
         return
     hero = int(gs.hero)
-    ti = state.turn_index
+    ti = _coerce_actor_seat(getattr(state, "turn_index", None))
     if ti is None or ti == hero:
         return
     legal_moves = _legal_moves_snapshot(state, ti)
@@ -608,6 +608,35 @@ def _live_pot_metrics(state: Any) -> tuple[float, float]:
     return total_pot, current_street_pot
 
 
+def _coerce_actor_seat(raw: Any) -> int | None:
+    """Normalize PokerKit ``turn_index`` (or similar) to a seat in ``[0, _N_PLAYERS)``."""
+    if raw is None or isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return int(raw) % _N_PLAYERS
+    try:
+        return int(raw) % _N_PLAYERS
+    except (TypeError, ValueError):
+        pass
+    for attr in ("player_index", "index", "seat"):
+        v = getattr(raw, attr, None)
+        if v is None or isinstance(v, bool):
+            continue
+        try:
+            return int(v) % _N_PLAYERS
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def live_turn_seat(gs: GameState) -> int | None:
+    """Acting seat from live PokerKit state while the hand is in progress (UI + bots)."""
+    state = gs.poker_state
+    if state is None or not bool(getattr(state, "status", True)):
+        return None
+    return _coerce_actor_seat(getattr(state, "turn_index", None))
+
+
 def _build_view(gs: GameState) -> dict[str, Any]:
     state = gs.poker_state
     hero = int(gs.hero)
@@ -665,7 +694,7 @@ def _build_view(gs: GameState) -> dict[str, Any]:
 
     folded = [not bool(s) for s in (state.statuses or [])]
 
-    ti = state.turn_index
+    ti = _coerce_actor_seat(getattr(state, "turn_index", None))
     is_hero_turn = bool(ti == hero and state.status)
 
     live_total_pot, live_current_street_pot = _live_pot_metrics(state)

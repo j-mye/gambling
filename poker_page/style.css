@@ -182,6 +182,57 @@ body {
   min-width: 0;
 }
 
+.app-footer-middle-stats {
+  min-height: clamp(3.25rem, 11dvh, 6.5rem);
+}
+
+.app-footer-analytics-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(0.3rem, 1vw, 0.65rem);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.app-footer-analytics-half {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.app-footer-analytics-label {
+  font-size: clamp(0.55rem, 1.1vw, 0.65rem);
+  margin-bottom: clamp(0.15rem, 0.6dvh, 0.35rem);
+}
+
+.app-footer-win-prob-value {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: clamp(0.8rem, 2.4vw, 1.2rem);
+  line-height: 1.1;
+}
+
+.app-footer-coach-panel {
+  min-height: 0;
+}
+
+.app-footer-coach-body {
+  min-height: 0;
+}
+
+.app-footer-coach-text {
+  font-size: clamp(0.62rem, 1.25vw, 0.78rem);
+  line-height: 1.35;
+}
+
 .app-footer-hero-stacks {
   display: flex;
   flex-direction: row;
@@ -261,6 +312,29 @@ body {
 .loser {
   border: 2px solid #e74c3c !important;
   box-shadow: 0 0 12px rgba(231, 76, 60, 0.55) !important;
+}
+
+.poker-table-surface .seat-panel.winner {
+  border-color: rgb(16 185 129) !important;
+  border-width: 2px !important;
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.35),
+    0 0 14px rgba(16, 185, 129, 0.45) !important;
+}
+
+.poker-table-surface .seat-panel.loser {
+  border-color: rgb(239 68 68) !important;
+  border-width: 2px !important;
+  box-shadow:
+    0 0 0 1px rgba(239, 68, 68, 0.35),
+    0 0 12px rgba(239, 68, 68, 0.4) !important;
+}
+
+.poker-table-surface .seat-panel.winner.active-turn {
+  box-shadow:
+    inset 0 0 0 2px rgba(251, 191, 36, 0.92),
+    0 0 0 1px rgba(16, 185, 129, 0.35),
+    0 0 14px rgba(16, 185, 129, 0.45) !important;
 }
 .seat-metrics {
   margin-top: 6px;
