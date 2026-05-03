@@ -1,0 +1,11 @@
+packages = ["pokerkit"]
+
+[files]
+"./main.py" = "./main.py"
+"./poker_core.py" = "./poker_core.py"
+"./game_state.py" = "./game_state.py"
+"./cards_html.py" = "./cards_html.py"
+"./bot_backend.py" = "./bot_backend.py"
+"./coach_engine.py" = "./coach_engine.py"
+"./live_seat_metrics.py" = "./live_seat_metrics.py"
+"./heuristics.py" = "./heuristics.py"

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link rel="stylesheet" href="https://pyscript.net/releases/2024.11.1/core.css"/>
+<link rel="stylesheet" href="style.css"/>
+<script type="module" src="https://pyscript.net/releases/2024.11.1/core.js"></script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#00422b",
+                        "on-secondary": "#002e6a",
+                        "on-tertiary-fixed": "#07006c",
+                        "on-surface": "#dae2fd",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary": "#1000a9",
+                        "inverse-surface": "#dae2fd",
+                        "secondary-fixed": "#d8e2ff",
+                        "error-container": "#93000a",
+                        "on-primary-fixed-variant": "#005236",
+                        "primary-fixed": "#6ffbbe",
+                        "on-surface-variant": "#bbcabf",
+                        "inverse-primary": "#006c49",
+                        "tertiary-fixed-dim": "#c0c1ff",
+                        "on-secondary-fixed": "#001a42",
+                        "on-primary-fixed": "#002113",
+                        "inverse-on-surface": "#283044",
+                        "surface": "#0b1326",
+                        "tertiary": "#c0c1ff",
+                        "surface-container-low": "#131b2e",
+                        "outline-variant": "#3c4a42",
+                        "on-secondary-container": "#e6ecff",
+                        "on-error": "#690005",
+                        "on-tertiary-fixed-variant": "#2f2ebe",
+                        "secondary-container": "#0566d9",
+                        "outline": "#86948a",
+                        "secondary": "#adc6ff",
+                        "primary-container": "#10b981",
+                        "on-tertiary-container": "#1d17b2",
+                        "error": "#ffb4ab",
+                        "surface-container": "#171f33",
+                        "surface-bright": "#31394d",
+                        "surface-variant": "#2d3449",
+                        "surface-tint": "#4edea3",
+                        "background": "#0b1326",
+                        "surface-container-high": "#222a3d",
+                        "surface-dim": "#0b1326",
+                        "on-secondary-fixed-variant": "#004395",
+                        "tertiary-container": "#9699ff",
+                        "surface-container-lowest": "#060e20",
+                        "primary": "#4edea3",
+                        "on-background": "#dae2fd",
+                        "surface-container-highest": "#2d3449",
+                        "primary-fixed-dim": "#4edea3",
+                        "on-primary": "#003824",
+                        "tertiary-fixed": "#e1e0ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "xs": "4px",
+                        "xl": "48px",
+                        "container-max": "1440px",
+                        "sm": "8px",
+                        "panel-height": "80px",
+                        "md": "16px",
+                        "base": "4px",
+                        "lg": "24px"
+                    },
+                    "fontFamily": {
+                        "ui-sans-bold": ["Inter"],
+                        "display-mono": ["Space Grotesk"],
+                        "ui-label": ["Inter"],
+                        "data-mono-sm": ["Space Grotesk"],
+                        "ui-sans-reg": ["Inter"],
+                        "data-mono-lg": ["Space Grotesk"]
+                    },
+                    "fontSize": {
+                        "ui-sans-bold": ["16px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "display-mono": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "ui-label": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "data-mono-sm": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "ui-sans-reg": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "data-mono-lg": ["18px", {"lineHeight": "24px", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #0b1326;
+            color: #dae2fd;
+        }
+        .poker-table-gradient {
+            background: radial-gradient(circle at center, #1e293b 0%, #0b1326 100%);
+        }
+    </style>
+</head>
+<body class="font-ui-sans-reg text-ui-sans-reg overflow-hidden flex flex-col h-screen">
+<!-- TopAppBar -->
+<header class="bg-slate-950 text-emerald-500 font-sans text-sm tracking-wide uppercase border-b border-slate-800 flex justify-between items-center w-full px-6 h-14 z-50 flex-shrink-0">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tighter text-slate-50">POKER SIMULATOR</span>
+</div>
+<div class="flex items-center gap-4">
+<button type="button" id="coach-toggle" py-click="handle_coach_toggle" class="flex items-center gap-2 px-3 py-1 bg-slate-900 rounded-full border border-slate-800 cursor-pointer" aria-pressed="true" aria-label="Toggle coach mode">
+<span class="text-ui-label text-slate-400">Coach Mode</span>
+<div id="coach-toggle-track" class="w-8 h-4 rounded-full relative transition-colors bg-emerald-500">
+<div id="coach-toggle-knob" class="absolute right-0.5 top-0.5 w-3 h-3 rounded-full shadow transition-all bg-white"></div>
+</div>
+</button>
+</div>
+</header>
+<!-- Main Content Canvas (Poker Table) -->
+<main class="relative flex-grow w-full flex flex-col items-center justify-center p-xl overflow-hidden">
+<!-- The Table Area -->
+<div class="relative w-full max-w-5xl aspect-[21/9] rounded-[240px] border border-slate-800 poker-table-gradient flex flex-col items-center justify-center">
+<!-- Pot Info -->
+<div class="absolute top-1/4 flex flex-col items-center">
+<span class="text-ui-label text-slate-500 uppercase tracking-widest mb-1">Total Pot</span>
+<span id="total-pot" class="font-display-mono text-display-mono text-primary">$0.00</span>
+</div>
+<!-- Community Cards -->
+<div id="board-cards" class="flex gap-md items-center justify-center min-h-[7rem]"></div>
+<!-- 6 Players Distribution (5 AI + 1 User at bottom) -->
+<!-- AI 1 (Top Left) ui-slot 0 -->
+<div id="seat-shell-0" class="absolute top-0 left-1/4 -translate-x-1/2 -translate-y-1/2">
+<div id="seat-inner-0" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div class="min-w-0 flex-1">
+<div id="seat-name-0" class="text-ui-sans-bold text-slate-200 truncate">—</div>
+<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+<span id="seat-stack-0" class="font-data-mono-sm text-primary shrink-0">$0</span>
+<span id="seat-bluff-0" class="text-[10px] text-slate-500 shrink-0 whitespace-nowrap">Bluff —</span>
+</div>
+</div>
+<div id="seat-role-0" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
+</div>
+<div id="seat-action-0" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
+<div id="seat-holes-0" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+</div>
+</div>
+<!-- AI 2 (Top Center) ui-slot 1 -->
+<div id="seat-shell-1" class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
+<div id="seat-inner-1" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1 shadow-lg shadow-emerald-500/10">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div class="min-w-0 flex-1">
+<div id="seat-name-1" class="text-ui-sans-bold text-slate-200 truncate">—</div>
+<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+<span id="seat-stack-1" class="font-data-mono-sm text-primary shrink-0">$0</span>
+<span id="seat-bluff-1" class="text-[10px] text-slate-500 shrink-0 whitespace-nowrap">Bluff —</span>
+</div>
+</div>
+<div id="seat-role-1" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
+</div>
+<div id="seat-action-1" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
+<div id="seat-holes-1" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+</div>
+</div>
+<!-- AI 3 (Top Right) ui-slot 2 -->
+<div id="seat-shell-2" class="absolute top-0 right-1/4 translate-x-1/2 -translate-y-1/2">
+<div id="seat-inner-2" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div class="min-w-0 flex-1">
+<div id="seat-name-2" class="text-ui-sans-bold text-slate-200 truncate">—</div>
+<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+<span id="seat-stack-2" class="font-data-mono-sm text-primary shrink-0">$0</span>
+<span id="seat-bluff-2" class="text-[10px] text-slate-500 shrink-0 whitespace-nowrap">Bluff —</span>
+</div>
+</div>
+<div id="seat-role-2" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
+</div>
+<div id="seat-action-2" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
+<div id="seat-holes-2" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+</div>
+</div>
+<!-- AI 4 (Right Center) ui-slot 3 -->
+<div id="seat-shell-3" class="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2">
+<div id="seat-inner-3" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div class="min-w-0 flex-1">
+<div id="seat-name-3" class="text-ui-sans-bold text-slate-200 truncate">—</div>
+<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+<span id="seat-stack-3" class="font-data-mono-sm text-primary shrink-0">$0</span>
+<span id="seat-bluff-3" class="text-[10px] text-slate-500 shrink-0 whitespace-nowrap">Bluff —</span>
+</div>
+</div>
+<div id="seat-role-3" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
+</div>
+<div id="seat-action-3" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
+<div id="seat-holes-3" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+</div>
+</div>
+<!-- AI 5 (Left Center) ui-slot 4 -->
+<div id="seat-shell-4" class="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2">
+<div id="seat-inner-4" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div class="min-w-0 flex-1">
+<div id="seat-name-4" class="text-ui-sans-bold text-slate-200 truncate">—</div>
+<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+<span id="seat-stack-4" class="font-data-mono-sm text-primary shrink-0">$0</span>
+<span id="seat-bluff-4" class="text-[10px] text-slate-500 shrink-0 whitespace-nowrap">Bluff —</span>
+</div>
+</div>
+<div id="seat-role-4" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
+</div>
+<div id="seat-action-4" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
+<div id="seat-holes-4" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+</div>
+</div>
+<!-- User (Bottom Center) ui-slot 5 -->
+<div id="seat-shell-5" class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2">
+<div id="seat-inner-5" class="bg-emerald-500/10 border-2 border-emerald-500 w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-emerald-500 flex items-center justify-center text-on-primary shrink-0">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div class="min-w-0 flex-1 overflow-hidden">
+<div id="seat-name-5" class="text-[10px] font-bold text-emerald-400 truncate leading-tight tracking-tight">YOU</div>
+<div class="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+<span id="seat-stack-5" class="font-data-mono-sm text-white shrink-0">$0</span>
+<span id="seat-bluff-5" class="text-[10px] text-slate-500 shrink-0 whitespace-nowrap">Bluff —</span>
+</div>
+</div>
+<div id="seat-role-5" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
+</div>
+<div id="seat-action-5" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
+<div id="seat-holes-5" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+</div>
+</div>
+</div>
+</main>
+<!-- Comprehensive Analytical Footer -->
+<footer class="bg-slate-950 border-t border-slate-800 p-3 min-h-[160px] flex-shrink-0 z-50">
+<div class="max-w-[1600px] mx-auto h-full flex gap-lg items-stretch">
+<!-- Left: Hero cards, stakes, hand result -->
+<div class="flex flex-col gap-2 border-r border-slate-800 pr-lg py-1 justify-center shrink-0">
+<div class="flex items-start gap-lg">
+<div id="hero-hole-cards" class="flex gap-sm shrink-0"></div>
+<div class="flex flex-col gap-1">
+<div class="flex flex-col gap-0.5">
+<div class="text-[10px] text-slate-500 uppercase tracking-widest">Stack</div>
+<div id="hero-stack" class="font-display-mono text-data-mono-lg text-primary leading-tight">$0.00</div>
+</div>
+<div class="flex flex-col gap-0.5">
+<div class="text-[10px] text-slate-500 uppercase tracking-widest">To Call</div>
+<div id="hero-to-call" class="font-display-mono text-data-mono-lg text-slate-200 leading-tight">$0.00</div>
+</div>
+</div>
+</div>
+<div id="hand-over-banner" class="hidden w-full max-w-md px-3 py-2 rounded-lg border border-emerald-500/50 bg-slate-900/90 text-emerald-400 text-sm font-bold text-center"></div>
+</div>
+<!-- Middle: GTO Analysis Stats -->
+<div class="flex-1 flex flex-col gap-3 px-lg border-r border-slate-800 h-full justify-center">
+<div class="grid grid-cols-3 gap-4">
+<div class="bg-surface-container-high border border-outline-variant p-2 rounded-lg">
+<span class="text-[10px] text-slate-400 uppercase">Win probability</span>
+<div id="stat-win-prob" class="font-display-mono text-data-mono-lg text-emerald-500">—</div>
+</div>
+<div class="col-span-2 bg-surface-container-high border border-outline-variant p-2 rounded-lg">
+<span class="text-[10px] text-slate-400 uppercase mb-1 block">Optimal Strategy Distribution</span>
+<div id="gto-bar" class="w-full bg-slate-800 h-6 rounded overflow-hidden flex text-[10px] font-bold"></div>
+</div>
+</div>
+<div class="bg-emerald-500/5 border border-emerald-500/20 p-2 rounded-lg flex items-start gap-3">
+<span class="material-symbols-outlined text-emerald-500 text-sm mt-0.5">lightbulb</span>
+<p id="coach-text" class="text-[11px] text-slate-300 leading-tight"></p>
+</div>
+</div>
+<!-- Right: Betting controls + next hand -->
+<div class="flex flex-col gap-2 min-w-[320px] justify-center shrink-0 py-1">
+<div id="betting-actions" class="flex flex-col gap-1">
+<p id="action-error" class="footer-err text-xs text-red-400"></p>
+<p id="model-error" class="footer-err text-xs text-amber-400/90"></p>
+<div class="flex gap-2">
+<button type="button" id="btn-fold" py-click="handle_fold" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs font-bold uppercase py-3 rounded border border-slate-700 transition-all">Fold</button>
+<button type="button" id="btn-call" py-click="handle_call" class="flex-1 bg-secondary-container hover:bg-secondary-container/80 text-white font-mono text-xs font-bold uppercase py-3 rounded transition-all">Check / Call</button>
+</div>
+<div class="flex flex-col gap-2">
+<button type="button" id="btn-raise" py-click="handle_raise" class="bg-primary-container hover:bg-primary-container/90 text-on-primary-container font-mono text-sm font-bold uppercase py-3 rounded flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">trending_up</span>
+Raise
+</button>
+<div class="flex items-center gap-4">
+<input id="raise-slider" py-input="handle_raise_slider" class="flex-1 accent-emerald-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer" type="range" min="4" max="200" value="4"/>
+<input id="raise-value" type="number" step="1" min="4" max="200" value="4" py-input="handle_raise_value_input" py-change="handle_raise_value_change" class="w-[4.5rem] shrink-0 bg-slate-900 border border-slate-800 rounded px-1 py-1 text-center font-display-mono text-primary text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" inputmode="numeric" aria-label="Raise to amount"/>
+</div>
+</div>
+</div>
+<button type="button" id="btn-next-hand" py-click="handle_next_hand" class="hidden mt-1 bg-slate-700 hover:bg-slate-600 text-white font-mono text-xs font-bold uppercase py-2 rounded border border-slate-600 w-full">Deal Next Hand</button>
+</div>
+</div>
+</footer>
+<script type="py" src="./main.py" config="./pyscript.toml"></script>
+</body></html>

@@ -14,5 +14,4 @@ dependencies = [
     "pokerkit>=0.7.3",
     "scikit-learn",
     "scipy",
-    "streamlit",
 ]
