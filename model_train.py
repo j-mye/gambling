@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -9,97 +11,9 @@ from sklearn.metrics import accuracy_score, brier_score_loss, roc_auc_score
 from sklearn.model_selection import GroupShuffleSplit
 
 from scripts.features.poker_hand_strength import build_stage_feature_payload, parse_cards
+from scripts.models.feature_contracts import STAGE_FEATURES
 
 STAGES = ["preflop", "flop", "turn", "river"]
-STAGE_FEATURES = {
-    "preflop": [
-        "hole_rank_high",
-        "hole_rank_low",
-        "is_pair",
-        "is_suited",
-        "rank_gap",
-        "has_ace",
-        "has_broadway",
-        "preflop_strength",
-        "hero_stack_bb",
-        "effective_stack_bb",
-        "spr",
-        "hero_stack_percentile",
-        "is_short_stack",
-    ],
-    "flop": [
-        "hand_strength",
-        "pair_count",
-        "trips_count",
-        "flush_draw",
-        "open_ended_straight_draw",
-        "gutshot_draw",
-        "board_high_rank",
-        "board_is_paired",
-        "board_connected",
-        "hero_stack_bb",
-        "effective_stack_bb",
-        "spr",
-        "hero_stack_percentile",
-        "is_short_stack",
-        "board_four_flush",
-        "board_straight_present",
-        "board_straight_4liner",
-        "board_pair_count",
-        "board_trips_present",
-        "board_full_house_present",
-        "hero_uses_hole_for_best",
-        "shared_strength_gap",
-        "board_shared_strength_risk",
-    ],
-    "turn": [
-        "hand_strength",
-        "pair_count",
-        "trips_count",
-        "flush_draw",
-        "open_ended_straight_draw",
-        "gutshot_draw",
-        "board_high_rank",
-        "board_is_paired",
-        "board_connected",
-        "hero_stack_bb",
-        "effective_stack_bb",
-        "spr",
-        "hero_stack_percentile",
-        "is_short_stack",
-        "board_four_flush",
-        "board_straight_present",
-        "board_straight_4liner",
-        "board_pair_count",
-        "board_trips_present",
-        "board_full_house_present",
-        "hero_uses_hole_for_best",
-        "shared_strength_gap",
-        "board_shared_strength_risk",
-    ],
-    "river": [
-        "hand_strength",
-        "pair_count",
-        "trips_count",
-        "board_high_rank",
-        "board_is_paired",
-        "board_connected",
-        "hero_stack_bb",
-        "effective_stack_bb",
-        "spr",
-        "hero_stack_percentile",
-        "is_short_stack",
-        "board_four_flush",
-        "board_straight_present",
-        "board_straight_4liner",
-        "board_pair_count",
-        "board_trips_present",
-        "board_full_house_present",
-        "hero_uses_hole_for_best",
-        "shared_strength_gap",
-        "board_shared_strength_risk",
-    ],
-}
 
 
 def _safe_num(value: object) -> float:
@@ -233,7 +147,14 @@ def train_stage_model(stage: str, frame: pd.DataFrame) -> CalibratedClassifierCV
 
 
 def main() -> None:
-    df = pd.read_csv("data/gambling.csv")
+    cleaned = Path("data/cleanedGambling.csv")
+    raw = Path("data/gambling.csv")
+    path = cleaned if cleaned.exists() else raw
+    if path == raw and not raw.exists():
+        raise FileNotFoundError(
+            f"Missing dataset: expected {cleaned} (run notebooks/01 first) or {raw}"
+        )
+    df = pd.read_csv(path)
     if len(df) > 50000:
         unique_hands = df["hand_id"].dropna().astype(str).unique()
         take = min(20000, len(unique_hands))

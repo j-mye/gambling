@@ -18,7 +18,8 @@ def _draw_card(used: set[str]) -> tuple[str, str]:
         c = f"{random.choice(RANKS)}{random.choice(SUITS)}"
         if c not in used:
             used.add(c)
-            return c[0], c[1]
+            rank = "10" if c[0] == "T" else c[0]
+            return rank, c[1]
 
 
 def init_hand_state(seat_count: int = 6, starting_stack: int = 200) -> None:

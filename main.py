@@ -8,39 +8,40 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from scripts.models.bluff_predictor import FEATURES as BLUFF_FEATURES
-from scripts.models.bluff_predictor import predict_bluff
-from scripts.models.money_predictor import FEATURES as MONEY_FEATURES
-from scripts.models.money_predictor import predict_money
-from scripts.models.win_predictor import FEATURES as WIN_FEATURES
-from scripts.models.win_predictor import predict_win_probability
 from scripts.simulation.monte_carlo import simulate_folded_hand
 from scripts.ui.poker_table_tab import render_playable_poker_tab
 
 
-class FallbackClassifier:
-    def predict_proba(self, frame: pd.DataFrame):
-        value = min(max(float(frame.mean(axis=1).iloc[0]) / 10.0, 0.05), 0.95)
-        return [[1 - value, value]]
-
-
-class FallbackRegressor:
-    def predict(self, frame: pd.DataFrame):
-        return [float(frame.sum(axis=1).iloc[0]) * 0.1]
-
-
 def _load_data() -> pd.DataFrame:
-    path = Path("artifacts/processed/model_ready.csv")
-    if path.exists():
-        return pd.read_csv(path)
-    # Keep app usable without artifacts.
+    for path in (
+        Path("artifacts/processed/model_ready.csv"),
+        Path("data/cleanedGambling.csv"),
+    ):
+        if path.exists():
+            df = pd.read_csv(path)
+            preferred = [
+                "player_id",
+                "aggression_score",
+                "starting_stack",
+                "win_streak",
+                "strength_mean",
+                "preflop_equity",
+                "table_position",
+                "net_result",
+                "is_all_in",
+            ]
+            if path.name == "cleanedGambling.csv":
+                keep = [c for c in preferred if c in df.columns]
+                if keep:
+                    return df[keep].copy()
+            return df
     return pd.DataFrame(
         {
             "player_id": ["p1", "p2", "p3"],
             "aggression_score": [1.2, 3.5, 2.3],
             "starting_stack": [100, 125, 80],
             "win_streak": [0, 2, 1],
-            "loss_streak": [1, 0, 0],
+            "table_position": [1.0, 0.25, 0.5],
             "strength_mean": [0.62, 0.28, 0.47],
             "preflop_equity": [0.55, 0.38, 0.44],
             "net_result": [12, -20, 5],
@@ -64,17 +65,6 @@ def render_eda_tab(df: pd.DataFrame):
         st.metric("Avg win streak", f"{filtered['win_streak'].mean():.2f}")
 
 
-def render_bluff_tab():
-    st.subheader("Bluff Predictor")
-    inputs = {f: st.slider(f, 0.0, 10.0, 1.0) for f in BLUFF_FEATURES}
-    result = predict_bluff(inputs, FallbackClassifier(), threshold=0.5)
-    st.metric("Bluff probability", f"{result['bluff_probability']:.2%}")
-    st.write("Likely bluffing" if result["is_bluffing"] else "Likely value betting")
-    baseline = result["bluff_probability"]
-    sensitivity = {k: predict_bluff({**inputs, k: v + 1.0}, FallbackClassifier())["bluff_probability"] - baseline for k, v in inputs.items()}
-    st.bar_chart(pd.Series(sensitivity), use_container_width=True)
-
-
 def render_fold_tab():
     st.subheader("Fold Simulator")
     hand_id = st.text_input("Hand ID", value="demo_hand")
@@ -92,14 +82,12 @@ def main():
     st.set_page_config(page_title="Poker Behavioral Analysis", layout="wide")
     st.title("Online Poker Behavioral Analysis")
     df = _load_data()
-    tab1, tab2, tab3, tab4 = st.tabs(["Poker Simulator", "EDA & Streaks", "Bluff Predictor", "Fold Simulator"])
+    tab1, tab2, tab3 = st.tabs(["Poker Simulator", "EDA & Streaks", "Fold Simulator"])
     with tab1:
         render_playable_poker_tab()
     with tab2:
         render_eda_tab(df)
     with tab3:
-        render_bluff_tab()
-    with tab4:
         render_fold_tab()
 
 

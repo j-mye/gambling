@@ -42,6 +42,11 @@ def _suit_color(suit: str) -> str:
     return theme.SUIT_RED if suit in {"H", "D"} else theme.SUIT_BLACK
 
 
+def _display_rank(rank: str) -> str:
+    """Show ten as '10' (PokerKit and some paths use 'T')."""
+    return "10" if (rank or "").strip().upper() == "T" else rank
+
+
 def _card_shell(inner_html: str, extra_style: str = "", classes: str = "") -> str:
     return (
         f"<div class='{classes}' style='width:72px;height:104px;background:{theme.CARD_BG};border-radius:{theme.CARD_RADIUS};"
@@ -53,13 +58,14 @@ def _card_shell(inner_html: str, extra_style: str = "", classes: str = "") -> st
 def render_face_up_card(rank: str, suit: str, classes: str = "") -> str:
     """Render one face-up card."""
     # Card corners show rank+suit while center shows large suit glyph.
+    label = _display_rank(rank)
     sym = SUIT_SYMBOLS.get(suit, "?")
     color = _suit_color(suit)
     inner = (
-        f"<div style='position:absolute;top:6px;left:8px;color:{color};font-weight:700;font-size:15px;'>{rank}{sym}</div>"
+        f"<div style='position:absolute;top:6px;left:8px;color:{color};font-weight:700;font-size:15px;'>{label}{sym}</div>"
         f"<div style='font-size:30px;color:{color};'>{sym}</div>"
         f"<div style='position:absolute;bottom:6px;right:8px;color:{color};font-weight:700;font-size:15px;"
-        f"transform:rotate(180deg);'>{rank}{sym}</div>"
+        f"transform:rotate(180deg);'>{label}{sym}</div>"
     )
     return _card_shell(inner, classes=classes)
 

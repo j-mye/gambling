@@ -33,7 +33,12 @@ from scripts.game.bot_backend import (
     build_bot_instances,
     normalize_bot_response,
 )
+from scripts.features.visible_bluff_features import (
+    seat_commitment_and_raises,
+    vector_from_live_state,
+)
 from scripts.models.stage_win_predictor import predict_stage_win_probability
+from scripts.models.visible_bluff_predictor import predict_visible_bluff_probability
 from scripts.ui import theme
 from scripts.ui.card_html import (
     poker_table_css,
@@ -534,8 +539,8 @@ def _parse_card(card_obj: Any) -> tuple[str, str] | None:
 
     rank = token[:-1].upper()
     suit = token[-1].upper()
-    if rank == "10":
-        rank = "T"
+    if rank == "T":
+        rank = "10"
     if suit not in {"C", "D", "H", "S"} or rank not in {
         "2",
         "3",
@@ -545,7 +550,7 @@ def _parse_card(card_obj: Any) -> tuple[str, str] | None:
         "7",
         "8",
         "9",
-        "T",
+        "10",
         "J",
         "Q",
         "K",
@@ -706,14 +711,6 @@ def _live_pot_metrics(state: Any) -> tuple[float, float]:
     return total_pot, current_street_pot
 
 
-def _risk_band(value: float) -> str:
-    if value >= 0.65:
-        return "High"
-    if value >= 0.35:
-        return "Medium"
-    return "Low"
-
-
 def _build_view(state: Any, hero: int) -> dict[str, Any]:
     hand_complete = not bool(getattr(state, "status", True))
     terminal = st.session_state.get("terminal_payload")
@@ -791,16 +788,43 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
         win_probability = predict_stage_win_probability(phase_key, model_features)
     except Exception as exc:
         prediction_error = str(exc)
-    board_risk = float(model_features.get("board_shared_strength_risk", 0.0))
-    adjusted_aggression = (
-        float(win_probability) - (0.35 * board_risk)
-        if win_probability is not None
-        else None
-    )
     # Bind the visible metric to live active bets so it always updates with the
     # current betting round. Keep street breakdown as secondary/debug context.
     current_street_pot = live_current_street_pot
     current_street_label = _street_metric_label(phase_key)
+
+    bluff_prob_by_seat: list[float | None] = [None] * _N_PLAYERS
+    bluff_prediction_error = ""
+    try:
+        live_bb = float(_BLINDS[1]) if len(_BLINDS) > 1 else 2.0
+        ts_float = [float(s) for s in stacks]
+        for seat in range(_N_PLAYERS):
+            if seat >= len(stacks):
+                continue
+            try:
+                _, total_bet, raises = seat_commitment_and_raises(state, seat)
+                pos_tok = str(seat_roles.get(seat, "") or "")
+                vec = vector_from_live_state(
+                    stage=phase_key,
+                    board_cards=board_cards,
+                    seat_stack=float(stacks[seat]),
+                    seat_total_bet=float(total_bet),
+                    pot_total=float(live_total_pot),
+                    position_token=pos_tok,
+                    table_stacks=ts_float,
+                    big_blind=live_bb,
+                    seat_raise_count=raises,
+                )
+                bluff_prob_by_seat[seat] = predict_visible_bluff_probability(vec)
+            except Exception as exc:
+                if not bluff_prediction_error:
+                    bluff_prediction_error = str(exc)
+                # Missing model / bad feature contract fails every seat the same way.
+                if isinstance(exc, (FileNotFoundError, ValueError)):
+                    break
+    except Exception as exc:
+        bluff_prediction_error = str(exc)
+        bluff_prob_by_seat = [None] * _N_PLAYERS
 
     return {
         "hero": hero,
@@ -835,9 +859,8 @@ def _build_view(state: Any, hero: int) -> dict[str, Any]:
         "win_probability": win_probability,
         "prediction_error": prediction_error,
         "prediction_stage": phase_key,
-        "board_shared_strength_risk": board_risk,
-        "board_risk_band": _risk_band(board_risk),
-        "adjusted_aggression": adjusted_aggression,
+        "bluff_prob_by_seat": bluff_prob_by_seat,
+        "bluff_prediction_error": bluff_prediction_error,
     }
 
 
@@ -889,6 +912,12 @@ def _seat_html(seat: int, view: dict[str, Any]) -> str:
         )
     name = f"You – Seat {seat + 1}" if is_hero else f"Seat {seat + 1}"
 
+    bps = view.get("bluff_prob_by_seat") or []
+    metrics_parts = [f"Stack ${stack}", f"Bet ${bet}"]
+    if seat < len(bps) and bps[seat] is not None:
+        metrics_parts.append(f"Bluff ~{float(bps[seat]) * 100.0:.0f}%")
+    metrics_line = " | ".join(metrics_parts)
+
     if is_hero:
         cards_html = "".join(render_face_up_card(r, s) for r, s in hole)
     else:
@@ -905,7 +934,7 @@ def _seat_html(seat: int, view: dict[str, Any]) -> str:
         f"<div class='{seat_class}' style='position:relative;'>"
         f"{badge}"
         f"<div style='font-weight:700;font-size:13px;'>{name}{role_badge}</div>"
-        f"<div class='seat-metrics'>Stack ${stack} | Bet ${bet}</div>"
+        f"<div class='seat-metrics'>{metrics_line}</div>"
         f"<div style='display:flex;gap:6px;margin-top:8px;'>{cards_html}</div>"
         f"</div>"
     )
@@ -980,15 +1009,10 @@ def _render_hero_dashboard(
                     f"{float(win_probability):.2%}",
                     help=f"Model stage: {view.get('prediction_stage', 'preflop')}",
                 )
-                st.caption(
-                    f"Shared-board risk: {view.get('board_risk_band', 'Low')} ({float(view.get('board_shared_strength_risk', 0.0)):.2f})"
-                )
-                adj = view.get("adjusted_aggression")
-                if adj is not None:
-                    style = "Aggressive" if float(adj) >= 0.6 else ("Cautious" if float(adj) <= 0.4 else "Balanced")
-                    st.caption(f"Risk-adjusted posture: {style}")
             elif view.get("prediction_error"):
                 st.caption(f"Win chance unavailable: {view['prediction_error']}")
+            if view.get("bluff_prediction_error"):
+                st.caption(f"Bluff % unavailable: {view['bluff_prediction_error']}")
 
         # Right half: nested action controls.
         with right:

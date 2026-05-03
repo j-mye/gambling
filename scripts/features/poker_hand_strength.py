@@ -37,15 +37,25 @@ POSITION_MAP = {"SB": 0.0, "BB": 0.25, "UTG": 0.5, "MP": 0.65, "CO": 0.8, "BTN":
 
 
 def _card_rank(card: str) -> int | None:
+    if not card:
+        return None
+    if len(card) >= 3 and card[:2].upper() == "10":
+        return 10
     if len(card) < 2:
         return None
     return RANK_MAP.get(card[0].upper())
 
 
 def _card_suit(card: str) -> str | None:
-    if len(card) < 2:
+    if not card:
         return None
-    return card[1].lower()
+    if len(card) >= 3 and card[:2].upper() == "10":
+        s = card[2].lower()
+    elif len(card) >= 2:
+        s = card[1].lower()
+    else:
+        return None
+    return s if s in {"c", "d", "h", "s"} else None
 
 
 def _is_straight(ranks: list[int]) -> bool:
@@ -119,6 +129,11 @@ def parse_cards(value: object) -> list[str]:
     out: list[str] = []
     for token in text.split():
         t = token.strip()
+        if len(t) >= 3 and t[:2].upper() == "10":
+            suit = t[2].lower()
+            if suit in {"c", "d", "h", "s"}:
+                out.append(f"10{suit}")
+            continue
         if len(t) < 2:
             continue
         rank = t[0].upper()
@@ -129,11 +144,11 @@ def parse_cards(value: object) -> list[str]:
 
 
 def _ranks(cards: list[str]) -> list[int]:
-    return [RANK_MAP[c[0]] for c in cards if len(c) >= 2 and c[0] in RANK_MAP]
+    return [r for c in cards if (r := _card_rank(c)) is not None]
 
 
 def _suits(cards: list[str]) -> list[str]:
-    return [c[1].lower() for c in cards if len(c) >= 2]
+    return [s for c in cards if (s := _card_suit(c)) is not None]
 
 
 def _straight_draw_flags(cards: list[str]) -> tuple[int, int]:
@@ -197,12 +212,14 @@ def _hole_card_features(hole_cards: list[str]) -> dict[str, float]:
             "has_broadway": 0.0,
             "preflop_strength": 0.0,
         }
-    r1 = RANK_MAP.get(hole_cards[0][0], 0)
-    r2 = RANK_MAP.get(hole_cards[1][0], 0)
+    r1 = _card_rank(hole_cards[0]) or 0
+    r2 = _card_rank(hole_cards[1]) or 0
     high = float(max(r1, r2))
     low = float(min(r1, r2))
     is_pair = float(r1 == r2)
-    is_suited = float(hole_cards[0][1].lower() == hole_cards[1][1].lower())
+    s1 = _card_suit(hole_cards[0])
+    s2 = _card_suit(hole_cards[1])
+    is_suited = float(s1 is not None and s2 is not None and s1 == s2)
     gap = float(abs(r1 - r2))
     has_ace = float(14 in {r1, r2})
     broadway = float(r1 >= 10 or r2 >= 10)
