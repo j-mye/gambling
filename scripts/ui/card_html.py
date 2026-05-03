@@ -18,7 +18,12 @@ def poker_table_css() -> str:
 .seat-metrics { margin-top: 6px; font-size: 12px; color: #BCCCDC; }
 .active-turn { border: 2px solid #F1C40F; box-shadow: 0 0 0 rgba(241,196,15,0.3); animation: pulseTurn 1.1s infinite; }
 .action-badge { position: absolute; top: -10px; right: -6px; padding: 4px 8px; border-radius: 999px; background: #F1C40F; color: #1F2933; font-size: 11px; font-weight: 700; z-index: 3; }
-.board-row-fixed { display: flex; gap: 10px; justify-content: center; width: 100%; min-height: 110px; align-items: center; }
+.board-row-fixed { display: flex; gap: 10px; justify-content: center; width: 100%; min-height: 104px; align-items: center; }
+.poker-board-wrap {
+  margin: 0 !important;
+  padding: 24px 0 !important;
+  box-sizing: border-box;
+}
 .board-slot { width: 72px; height: 104px; display: inline-flex; align-items: center; justify-content: center; }
 .board-slot.placeholder { border: 1px dashed rgba(130, 154, 177, 0.85); border-radius: 12px; background: rgba(15, 23, 42, 0.25); box-shadow: inset 0 0 0 1px rgba(188, 204, 220, 0.2); }
 .community-card.deal-animate { animation: slideIn 0.4s ease-out both; }
@@ -32,6 +37,68 @@ def poker_table_css() -> str:
   0% { box-shadow: 0 0 0 0 rgba(241,196,15,0.45); }
   70% { box-shadow: 0 0 0 8px rgba(241,196,15,0.0); }
   100% { box-shadow: 0 0 0 0 rgba(241,196,15,0.0); }
+}
+/* Table: content height only; keep modest gap to hero (tighter when hand-over bar is shown). */
+div[data-testid="stVerticalBlock"]:has(.poker-table-anchor) {
+  min-height: unset !important;
+  margin-bottom: 12px !important;
+  padding-bottom: 0 !important;
+  gap: 0.35rem !important;
+}
+div[data-testid="stVerticalBlock"]:has(.poker-hand-over-bar-marker) {
+  margin-bottom: 10px !important;
+  padding-bottom: 0 !important;
+  gap: 0.25rem !important;
+}
+div[data-testid="stVerticalBlock"]:has(.poker-hand-over-bar-marker) div[data-testid="element-container"] {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+/* Hero block: keep top flush; spacing comes from table margin-bottom above */
+div[data-testid="stVerticalBlock"]:has(.poker-hero-anchor) {
+  min-height: unset !important;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  gap: 0.35rem !important;
+}
+/* Divider between table placeholder and hero (specificity beats generic stMarkdownContainer hr) */
+div[data-testid="stMarkdownContainer"] hr.poker-tab-divider {
+  margin: 0.2rem 0 0.12rem 0 !important;
+  border: none;
+  border-top: 1px solid rgba(130, 154, 177, 0.35);
+}
+div[data-testid="stMarkdownContainer"] hr:not(.poker-tab-divider) {
+  margin: 0.35rem 0 !important;
+}
+.hero-right-spacer {
+  min-height: 280px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.hero-right-spacer.hero-right-spacer--terminal {
+  min-height: 5rem;
+}
+.poker-hand-over-bar-marker {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.hero-action-error-slot--empty {
+  min-height: 2.75rem;
+  margin: 0;
+  padding: 0;
+}
+.hero-action-error-slot--filled {
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.35rem;
+  background: rgba(255, 75, 75, 0.12);
+  border: 1px solid rgba(255, 75, 75, 0.55);
+  color: #ffb4b4;
+  font-size: 0.875rem;
+  line-height: 1.4;
 }
 </style>
 """

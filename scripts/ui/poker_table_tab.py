@@ -13,12 +13,15 @@ Architecture (read this before touching anything):
   PILLAR 3 – Strict top-to-bottom execution order inside render_playable_poker_tab:
       Step 1  Process the hero's pending action (if any was queued by a button click).
       Step 2  Run the Dealer (clears any deal requests triggered by the hero's action).
+      Step 2b Pre-fill table + disabled hero before the bot loop (rigid DOM before time.sleep).
       Step 3  Run bots + Dealer in alternation until it is the hero's turn or the hand ends.
       Step 4  Render – read-only; zero engine mutations below this line.
 """
 
 from __future__ import annotations
 
+import html
+import inspect
 import random  # used for hero seat selection and bot 80/20 fold decision
 import re
 import time
@@ -221,18 +224,16 @@ def _render_live_snapshot(
     state: Any,
     hero: int,
     table_placeholder: Any,
-    controls_placeholder: Any,
     status_placeholder: Any | None = None,
     status_text: str = "",
-    include_controls: bool = False,
 ) -> None:
-    """Render an intermediate table snapshot during bot playback."""
+    """Render an intermediate table snapshot during bot playback.
+
+    Does not touch the hero placeholder so its height stays stable during sleeps.
+    """
     view = _build_view(state, hero)
     with table_placeholder.container():
-        _render_table(view)
-    with controls_placeholder.container():
-        st.markdown("---")
-        _render_hero_dashboard(view, include_controls=include_controls)
+        _render_table(view, interactive_deal=False)
     if status_placeholder is not None:
         if status_text:
             status_placeholder.info(status_text)
@@ -341,7 +342,6 @@ def _run_bots_to_hero(
     state: Any,
     hero: int,
     table_placeholder: Any | None = None,
-    controls_placeholder: Any | None = None,
     status_placeholder: Any | None = None,
 ) -> None:
     """Alternate Dealer → Bot until the hero must act or the hand ends.
@@ -367,19 +367,13 @@ def _run_bots_to_hero(
             break
 
         # Show explicit hand-off before the bot mutates state.
-        if (
-            table_placeholder is not None
-            and controls_placeholder is not None
-            and status_placeholder is not None
-        ):
+        if table_placeholder is not None and status_placeholder is not None:
             _render_live_snapshot(
                 state,
                 hero,
                 table_placeholder,
-                controls_placeholder,
                 status_placeholder=status_placeholder,
                 status_text=f"Seat {ti + 1} is thinking...",
-                include_controls=False,
             )
             time.sleep(1.5)
 
@@ -411,19 +405,13 @@ def _run_bots_to_hero(
             action_text = f"Seat {ti + 1} {fallback_label.lower()}."
 
         # Render the action result, then brief pause so users can register it.
-        if (
-            table_placeholder is not None
-            and controls_placeholder is not None
-            and status_placeholder is not None
-        ):
+        if table_placeholder is not None and status_placeholder is not None:
             _render_live_snapshot(
                 state,
                 hero,
                 table_placeholder,
-                controls_placeholder,
                 status_placeholder=status_placeholder,
                 status_text=action_text,
-                include_controls=False,
             )
             time.sleep(0.5)
 
@@ -971,23 +959,68 @@ def _board_html(view: dict[str, Any]) -> str:
     )
 
 
-def _render_table(view: dict[str, Any]) -> None:
+def _render_hand_over_table_zone(view: dict[str, Any], *, interactive_deal: bool) -> None:
+    """Win/loss banner + Deal Next Hand under the board (table_placeholder only)."""
+    payoffs = view["payoffs"]
     hero = view["hero"]
-    opponents = [s for s in range(view["seat_count"]) if s != hero]
-
-    # Opponent row
-    cols = st.columns(len(opponents))
-    for i, seat in enumerate(opponents):
-        with cols[i]:
-            st.markdown(_seat_html(seat, view), unsafe_allow_html=True)
-
-    # Community board
+    hp = payoffs[hero] if hero < len(payoffs) else 0
+    msg = "You won!" if hp > 0 else ("You lost." if hp < 0 else "Chopped pot.")
+    color = "#2ECC71" if hp > 0 else "#E74C3C"
+    banner_html = (
+        "<div class='poker-hand-over-banner-chip' style='padding:10px 12px;border-radius:8px;"
+        f"border:1px solid {color};background:rgba(16, 42, 67, 0.35);"
+        f"color:{color};font-weight:700;'>Hand over — {msg}  ({hp:+.0f} chips)</div>"
+    )
     st.markdown(
-        "<div style='margin:10px 0;'>" + _board_html(view) + "</div>",
+        '<div class="poker-hand-over-bar-marker" aria-hidden="true"></div>',
+        unsafe_allow_html=True,
+    )
+    with st.container(border=True):
+        bar_left, bar_right = st.columns([5, 2])
+        with bar_left:
+            st.markdown(banner_html, unsafe_allow_html=True)
+        with bar_right:
+            if interactive_deal:
+                if st.button(
+                    "Deal Next Hand",
+                    key="next_hand_btn",
+                    use_container_width=True,
+                ):
+                    _new_hand(advance_button=True)
+                    st.rerun()
+            else:
+                st.button(
+                    "Deal Next Hand",
+                    key="next_hand_dummy",
+                    disabled=True,
+                    use_container_width=True,
+                )
+
+
+def _hero_shell_container(*, hand_terminal: bool = False) -> Any:
+    """Fixed-height shell during play keeps controls stable; terminal hand drops height to avoid a tall empty panel."""
+    if not hand_terminal:
+        try:
+            sig = inspect.signature(st.container)
+            if "height" in sig.parameters:
+                try:
+                    return st.container(border=True, height=340)
+                except TypeError:
+                    pass
+        except (TypeError, ValueError):
+            pass
+    return st.container(border=True)
+
+
+def _render_hero_right_spacer(*, compact: bool = False) -> None:
+    cls = "hero-right-spacer hero-right-spacer--terminal" if compact else "hero-right-spacer"
+    st.markdown(
+        f'<div class="{cls}"></div>',
         unsafe_allow_html=True,
     )
 
 
+<<<<<<< HEAD
 def _render_hero_dashboard(
     view: dict[str, Any],
     include_controls: bool = True,
@@ -1020,224 +1053,260 @@ def _render_hero_dashboard(
                 _render_controls(view)
             else:
                 _render_controls_readonly(view)
+=======
+_CALL_LABEL_DISPLAY_LEN = 14
+>>>>>>> 92675fd47859cf84741c7cfc122f6cca8fdc50b5
 
 
-def _render_controls_readonly(view: dict[str, Any]) -> None:
-    """Render a non-interactive controls layout for bot-loop snapshots.
-
-    Keeps actions and pot metrics visible without creating Streamlit widgets,
-    which prevents duplicate widget key crashes during repeated snapshot renders.
-    """
+def _stable_call_button_label(view: dict[str, Any]) -> str:
     facing = view["facing_bet"]
     call_amount = view["call_amount"]
+    raw = f"Call ${call_amount}" if facing else "Check"
+    if len(raw) >= _CALL_LABEL_DISPLAY_LEN:
+        return raw[:_CALL_LABEL_DISPLAY_LEN]
+    return raw + "\u2007" * (_CALL_LABEL_DISPLAY_LEN - len(raw))
+
+
+def _render_action_error_slot(view: dict[str, Any]) -> None:
+    err = (view.get("action_error") or "").strip()
+    if err:
+        safe = html.escape(err)
+        st.markdown(
+            f'<div class="hero-action-error-slot hero-action-error-slot--filled">{safe}</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="hero-action-error-slot hero-action-error-slot--empty"></div>',
+            unsafe_allow_html=True,
+        )
+
+
+def _render_waiting_caption_row(view: dict[str, Any]) -> None:
+    if view["hand_complete"]:
+        st.caption("\u00a0")
+        return
+    if not view["is_hero_turn"]:
+        ti = view["turn_index"]
+        label = f"Seat {ti + 1}" if ti is not None else "the engine"
+        st.caption(f"Waiting for {label} to act…")
+    else:
+        st.caption("\u00a0")
+
+
+def _hero_action_scope_markdown() -> str:
+    return """
+<style>
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) {
+  min-height: 280px;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="column"] {
+  min-height: 280px;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Fold"] {
+  height: 120px !important;
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Check / Call"] {
+  height: 120px !important;
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Submit Bet / Raise"] {
+  height: 192px !important;
+  width: 100% !important;
+}
+div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="stNumberInput"] {
+  width: 100% !important;
+}
+</style>
+<div class="hero-action-controls-scope"></div>
+"""
+
+
+def _render_in_play_action_columns(
+    view: dict[str, Any],
+    *,
+    dummy: bool,
+    controls_disabled: bool = False,
+) -> None:
+    facing = view["facing_bet"]
     min_raise = view["min_raise"]
     max_raise = view["max_raise"]
-    call_label = f"Call ${call_amount}" if facing else "Check"
     bet_label = "Raise To" if facing else "Bet"
     default_raise = max(min_raise, min(min_raise, max_raise))
     submit_label = (
         f"{bet_label} ${int(st.session_state.get('raise_input', default_raise))}"
     )
-
-    # Reuse the exact same action-control CSS for visual parity.
-    st.markdown(
-        """
-<style>
-/* Scoped only to this action panel via marker + :has */
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) {
-  min-height: 240px;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="column"] {
-  min-height: 240px;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Fold"] {
-  height: 120px !important;         /* 50% of passive column */
-  width: 100% !important;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Check / Call"] {
-  height: 120px !important;         /* 50% of passive column */
-  width: 100% !important;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Submit Bet / Raise"] {
-  height: 192px !important;         /* 80% of aggressive column */
-  width: 100% !important;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="stNumberInput"] {
-  width: 100% !important;
-}
-</style>
-<div class="hero-action-controls-scope"></div>
-""",
-        unsafe_allow_html=True,
-    )
-
-    seq = int(st.session_state.get("_readonly_controls_seq", 0)) + 1
-    st.session_state["_readonly_controls_seq"] = seq
+    call_label = _stable_call_button_label(view)
 
     passive_col, aggressive_col = st.columns([1, 1])
     with passive_col:
-        st.button(
-            "Fold",
-            use_container_width=True,
-            key=f"ro_btn_fold_{seq}",
-            disabled=True,
-        )
-        st.button(
-            call_label,
-            use_container_width=True,
-            key=f"ro_btn_call_{seq}",
-            disabled=True,
-        )
+        if dummy:
+            st.button(
+                "Fold",
+                use_container_width=True,
+                key="fold_dummy",
+                disabled=True,
+            )
+            st.button(
+                call_label,
+                use_container_width=True,
+                key="call_dummy",
+                disabled=True,
+            )
+        else:
+            if st.button(
+                "Fold",
+                use_container_width=True,
+                key="btn_fold",
+                disabled=controls_disabled,
+            ):
+                st.session_state.pending_action = {"type": "fold"}
+                st.rerun()
+            if st.button(
+                call_label,
+                use_container_width=True,
+                key="btn_call",
+                disabled=controls_disabled,
+            ):
+                st.session_state.pending_action = {"type": "call"}
+                st.rerun()
         st.metric("Total Pot", f"${float(view.get('pot_total', 0.0)):,.2f}")
 
     with aggressive_col:
-        st.button(
-            submit_label,
-            use_container_width=True,
-            key=f"ro_btn_raise_{seq}",
-            disabled=True,
-        )
-        st.number_input(
-            bet_label,
-            min_value=min_raise,
-            max_value=max(min_raise, max_raise),
-            value=int(st.session_state.get("raise_input", default_raise)),
-            step=1,
-            key=f"ro_raise_input_{seq}",
-            label_visibility="collapsed",
-            disabled=True,
-        )
+        if dummy:
+            st.button(
+                submit_label,
+                use_container_width=True,
+                key="raise_submit_dummy",
+                disabled=True,
+            )
+            st.number_input(
+                bet_label,
+                min_value=min_raise,
+                max_value=max(min_raise, max_raise),
+                value=int(st.session_state.get("raise_input", default_raise)),
+                step=1,
+                key="raise_input_dummy",
+                label_visibility="collapsed",
+                disabled=True,
+            )
+        else:
+            if st.button(
+                submit_label,
+                use_container_width=True,
+                key="btn_raise",
+                disabled=controls_disabled,
+            ):
+                st.session_state.pending_action = {
+                    "type": "raise",
+                    "amount": int(st.session_state.get("raise_input", default_raise)),
+                }
+                st.rerun()
+            st.number_input(
+                bet_label,
+                min_value=min_raise,
+                max_value=max(min_raise, max_raise),
+                value=default_raise,
+                step=1,
+                key="raise_input",
+                label_visibility="collapsed",
+                disabled=controls_disabled,
+            )
         st.metric(
             view.get("current_street_label", "Street Bets"),
             f"${float(view.get('current_street_pot', 0.0)):,.2f}",
         )
-        if not view["is_hero_turn"] and not view["hand_complete"]:
-            ti = view["turn_index"]
-            label = f"Seat {ti + 1}" if ti is not None else "the engine"
-            st.caption(f"Waiting for {label} to act…")
+        _render_waiting_caption_row(view)
+
+
+def _render_table(
+    view: dict[str, Any],
+    *,
+    interactive_deal: bool = False,
+) -> None:
+    st.markdown(
+        '<div class="poker-table-anchor"></div>',
+        unsafe_allow_html=True,
+    )
+    hero = view["hero"]
+    opponents = [s for s in range(view["seat_count"]) if s != hero]
+
+    cols = st.columns(len(opponents))
+    for i, seat in enumerate(opponents):
+        with cols[i]:
+            st.markdown(_seat_html(seat, view), unsafe_allow_html=True)
+
+    st.markdown(
+        "<div class='poker-board-wrap'>" + _board_html(view) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    if view["hand_complete"]:
+        _render_hand_over_table_zone(view, interactive_deal=interactive_deal)
+
+
+def _render_hero_dashboard(view: dict[str, Any]) -> None:
+    hero = view["hero"]
+    with _hero_shell_container(hand_terminal=view["hand_complete"]):
+        st.markdown(
+            '<div class="poker-hero-anchor"></div>',
+            unsafe_allow_html=True,
+        )
+        left, right = st.columns(2)
+        with left:
+            st.markdown(_seat_html(hero, view), unsafe_allow_html=True)
+            st.caption(
+                f"Street Bet: ${view['hero_street_bet']:.2f} | Total Hand Bet: ${view['hero_total_bet']:.2f}"
+            )
+        with right:
+            if view["hand_complete"]:
+                _render_hero_right_spacer(compact=True)
+            else:
+                _render_controls(view)
+
+
+def _render_hero_waiting_dummy(view: dict[str, Any]) -> None:
+    """Disabled hero with stable dummy keys before/during bot loop."""
+    hero_seat = view["hero"]
+    with _hero_shell_container(hand_terminal=view["hand_complete"]):
+        st.markdown(
+            '<div class="poker-hero-anchor"></div>',
+            unsafe_allow_html=True,
+        )
+        left, right = st.columns(2)
+        with left:
+            st.markdown(_seat_html(hero_seat, view), unsafe_allow_html=True)
+            st.caption(
+                f"Street Bet: ${view['hero_street_bet']:.2f} | Total Hand Bet: ${view['hero_total_bet']:.2f}"
+            )
+        with right:
+            if view["hand_complete"]:
+                _render_hero_right_spacer(compact=True)
+            else:
+                _render_action_error_slot(view)
+                st.markdown(_hero_action_scope_markdown(), unsafe_allow_html=True)
+                _render_in_play_action_columns(
+                    view,
+                    dummy=True,
+                    controls_disabled=True,
+                )
 
 
 def _render_controls(view: dict[str, Any]) -> None:
-    # ── Hand over ────────────────────────────────────────────────────────────
+    """In-play Fold / Call / Raise only (hand-over UI is on the table)."""
     if view["hand_complete"]:
-        payoffs = view["payoffs"]
-        hero = view["hero"]
-        hp = payoffs[hero] if hero < len(payoffs) else 0
-        msg = "You won!" if hp > 0 else ("You lost." if hp < 0 else "Chopped pot.")
-        color = "#2ECC71" if hp > 0 else "#E74C3C"
-        st.markdown(
-            (
-                "<div style='padding:10px 12px;border-radius:10px;"
-                f"border:1px solid {color};background:rgba(16, 42, 67, 0.35);"
-                f"color:{color};font-weight:700;'>Hand over — {msg}  ({hp:+.0f} chips)</div>"
-            ),
-            unsafe_allow_html=True,
-        )
-        if st.button("Deal Next Hand", key="next_hand_btn"):
-            _new_hand(advance_button=True)
-            st.rerun()
         return
 
-    # ── Hero's controls ───────────────────────────────────────────────────────
-    if view["action_error"]:
-        st.error(view["action_error"])
-
-    facing = view["facing_bet"]
-    call_amount = view["call_amount"]
-    min_raise = view["min_raise"]
-    max_raise = view["max_raise"]
-
-    call_label = f"Call ${call_amount}" if facing else "Check"
-    bet_label = "Raise To" if facing else "Bet"
     controls_disabled = (not view["is_hero_turn"]) or view["hand_complete"]
 
-    st.markdown(
-        """
-<style>
-/* Scoped only to this action panel via marker + :has */
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) {
-  min-height: 240px;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="column"] {
-  min-height: 240px;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Fold"] {
-  height: 120px !important;         /* 50% of passive column */
-  width: 100% !important;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Check / Call"] {
-  height: 120px !important;         /* 50% of passive column */
-  width: 100% !important;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) button[aria-label="Submit Bet / Raise"] {
-  height: 192px !important;         /* 80% of aggressive column */
-  width: 100% !important;
-}
-div[data-testid="stVerticalBlock"]:has(> div > .hero-action-controls-scope) div[data-testid="stNumberInput"] {
-  width: 100% !important;
-}
-</style>
-<div class="hero-action-controls-scope"></div>
-""",
-        unsafe_allow_html=True,
+    _render_action_error_slot(view)
+    st.markdown(_hero_action_scope_markdown(), unsafe_allow_html=True)
+    _render_in_play_action_columns(
+        view,
+        dummy=False,
+        controls_disabled=controls_disabled,
     )
-
-    passive_col, aggressive_col = st.columns([1, 1])
-
-    with passive_col:
-        if st.button(
-            "Fold",
-            use_container_width=True,
-            key="btn_fold",
-            disabled=controls_disabled,
-        ):
-            st.session_state.pending_action = {"type": "fold"}
-            st.rerun()
-        if st.button(
-            call_label,
-            use_container_width=True,
-            key="btn_call",
-            disabled=controls_disabled,
-        ):
-            st.session_state.pending_action = {"type": "call"}
-            st.rerun()
-        st.metric("Total Pot", f"${float(view.get('pot_total', 0.0)):,.2f}")
-
-    with aggressive_col:
-        # Clamp default value inside [min_raise, max_raise] to avoid Streamlit error.
-        default_raise = max(min_raise, min(min_raise, max_raise))
-        submit_label = (
-            f"{bet_label} ${int(st.session_state.get('raise_input', default_raise))}"
-        )
-        if st.button(
-            submit_label,
-            use_container_width=True,
-            key="btn_raise",
-            disabled=controls_disabled,
-        ):
-            st.session_state.pending_action = {
-                "type": "raise",
-                "amount": int(st.session_state.get("raise_input", default_raise)),
-            }
-            st.rerun()
-        st.number_input(
-            bet_label,
-            min_value=min_raise,
-            max_value=max(min_raise, max_raise),
-            value=default_raise,
-            step=1,
-            key="raise_input",
-            label_visibility="collapsed",
-            disabled=controls_disabled,
-        )
-        st.metric(
-            view.get("current_street_label", "Street Bets"),
-            f"${float(view.get('current_street_pot', 0.0)):,.2f}",
-        )
-        if not view["is_hero_turn"] and not view["hand_complete"]:
-            ti = view["turn_index"]
-            label = f"Seat {ti + 1}" if ti is not None else "the engine"
-            st.caption(f"Waiting for {label} to act…")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1252,7 +1321,7 @@ def render_playable_poker_tab() -> None:
     state: Any = st.session_state.poker_state
     hero: int = st.session_state.hero
     table_placeholder = st.empty()
-    controls_placeholder = st.empty()
+    hero_placeholder = st.empty()
     status_placeholder = st.empty()
 
     # ── PILLAR 3: Strict execution order ──────────────────────────────────────
@@ -1265,21 +1334,34 @@ def render_playable_poker_tab() -> None:
     # Step 2 – Dealer: clears any dealing requests triggered by the hero's action.
     _run_dealer(state)
 
+    # Pre-fill table + disabled hero before bot sleeps so DOM height is locked.
+    view_waiting = _build_view(state, hero)
+    with table_placeholder.container():
+        _render_table(view_waiting, interactive_deal=False)
+    with hero_placeholder.container():
+        st.markdown(
+            "<hr class='poker-tab-divider' />",
+            unsafe_allow_html=True,
+        )
+        _render_hero_waiting_dummy(view_waiting)
+
     # Step 3 – Bots + Dealer loop until hero's turn or hand ends.
     _run_bots_to_hero(
         state,
         hero,
         table_placeholder=table_placeholder,
-        controls_placeholder=controls_placeholder,
         status_placeholder=status_placeholder,
     )
 
     # ── Step 4: Render (read-only from here down) ─────────────────────────────
     view = _build_view(state, hero)
     with table_placeholder.container():
-        _render_table(view)
-    with controls_placeholder.container():
-        st.markdown("---")
+        _render_table(view, interactive_deal=True)
+    with hero_placeholder.container():
+        st.markdown(
+            "<hr class='poker-tab-divider' />",
+            unsafe_allow_html=True,
+        )
         _render_hero_dashboard(view)
     status_placeholder.empty()
 
