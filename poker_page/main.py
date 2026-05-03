@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import html
 from typing import Any
 
-from pyscript import document
+from pyscript import document, window
 
-import coach_engine
 import poker_core
 from cards_html import hero_card_cell
 from game_state import GameState
@@ -20,31 +18,30 @@ def _el(eid: str) -> Any:
     return document.getElementById(eid)
 
 
-def _sync_coach_toggle_ui() -> None:
-    """Match header switch visuals to ``state.coach_mode``."""
-    btn = _el("coach-toggle")
-    if btn is not None:
-        btn.setAttribute("aria-pressed", "true" if state.coach_mode else "false")
-    track = _el("coach-toggle-track")
-    knob = _el("coach-toggle-knob")
-    if track is None or knob is None:
+def _sync_game_charts(view: dict[str, Any]) -> None:
+    """Push bluff-by-seat data into the footer Chart.js (see index.html)."""
+    bps = view.get("bluff_prob_by_seat") or []
+    bluff6: list[float] = []
+    for i in range(6):
+        p = bps[i] if i < len(bps) else None
+        try:
+            bluff6.append(float(p) * 100.0 if p is not None else 0.0)
+        except (TypeError, ValueError):
+            bluff6.append(0.0)
+
+    folded_l = view.get("folded") or []
+    folded6 = [bool(folded_l[i]) if i < len(folded_l) else False for i in range(6)]
+
+    hero = int(view.get("hero", 0)) % 6
+    fn = getattr(window, "_updatePokerCharts", None)
+    if fn is None:
         return
-    if state.coach_mode:
-        track.className = (
-            "w-8 h-4 rounded-full relative transition-colors bg-emerald-500"
-        )
-        knob.className = (
-            "absolute right-0.5 top-0.5 w-3 h-3 rounded-full shadow transition-all "
-            "bg-white"
-        )
-    else:
-        track.className = (
-            "w-8 h-4 rounded-full relative transition-colors bg-slate-600"
-        )
-        knob.className = (
-            "absolute left-0.5 top-0.5 w-3 h-3 rounded-full shadow transition-all "
-            "bg-slate-200"
-        )
+    try:
+        from pyodide.ffi import to_js
+
+        fn(hero, to_js(bluff6), to_js(folded6))
+    except ImportError:
+        fn(hero, bluff6, folded6)
 
 
 def _engines_ui_order(hero: int) -> list[int]:
@@ -265,17 +262,7 @@ def update_ui() -> None:
         wp = view.get("win_probability")
         wp_el.innerText = f"{float(wp) * 100:.1f}%" if wp is not None else "—"
 
-    ct = _el("coach-text")
-    if ct is not None:
-        if state.coach_mode:
-            ct.innerHTML = (
-                '<span class="font-bold text-emerald-500 uppercase mr-1">Coach:</span>'
-                + html.escape(coach_engine.coach_message(view))
-            )
-        else:
-            ct.innerText = "Coach mode off."
-
-    _sync_coach_toggle_ui()
+    _sync_game_charts(view)
 
     ae = _el("action-error")
     if ae is not None:
@@ -489,9 +476,16 @@ def handle_next_hand(event):  # noqa: ARG001
     _schedule_run_bots()
 
 
-def handle_coach_toggle(event):  # noqa: ARG001
-    state.coach_mode = not state.coach_mode
+def handle_restart_table(event):  # noqa: ARG001
+    if state.bots_running:
+        return
+    poker_core.ensure_initialized(state)
+    poker_core.restart_table(state)
+    v = poker_core.build_view(state)
+    mn = int(v.get("min_raise", poker_core._MIN_BET * 2))
+    state.raise_amount = mn
     update_ui()
+    _schedule_run_bots()
 
 
 def py_init():

@@ -21,7 +21,6 @@ class GameState:
     action_error: str = ""
     bot_error: str = ""
     raise_amount: int = 0
-    coach_mode: bool = True
     bots_running: bool = False
     ml_enabled: bool = False
     # Fingerprint of visible cards; skip innerHTML when unchanged (avoids flicker).

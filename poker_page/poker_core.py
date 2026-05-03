@@ -47,6 +47,7 @@ _AUTOMATIONS = (
 )
 _N_PLAYERS = 6
 _STARTING_STACK = 200
+_OPPONENT_REBUY_STACK = 100
 _BLINDS = (1, 2)
 _MIN_BET = 2
 
@@ -106,6 +107,14 @@ def _new_hand(gs: GameState, *, advance_button: bool) -> None:
     bankrolls = _normalize_bankrolls(
         gs.master_bankrolls or [_STARTING_STACK] * _N_PLAYERS
     )
+    hero = int(gs.hero) % _N_PLAYERS
+    opponent_rebuys = 0
+    for i in range(_N_PLAYERS):
+        if i == hero:
+            continue
+        if bankrolls[i] <= 0:
+            bankrolls[i] = _OPPONENT_REBUY_STACK
+            opponent_rebuys += 1
     gs.master_bankrolls = bankrolls
     button_index = int(gs.button_index) % _N_PLAYERS
     if advance_button:
@@ -113,20 +122,41 @@ def _new_hand(gs: GameState, *, advance_button: bool) -> None:
     gs.button_index = button_index
     blinds_vector = _blinds_vector_from_button(button_index, _N_PLAYERS)
 
-    state = NoLimitTexasHoldem.create_state(
-        _AUTOMATIONS,
-        True,                           # uniform_antes
-        0,                              # raw_antes
-        blinds_vector,                  # raw_blinds_or_straddles
-        _MIN_BET,                       # min_bet
-        tuple(bankrolls),
-        _N_PLAYERS,
-    )
+    msg_parts: list[str] = []
+    if opponent_rebuys:
+        msg_parts.append(
+            f"{opponent_rebuys} opponent(s) had no chips and rebought at "
+            f"${_OPPONENT_REBUY_STACK} (other stacks unchanged)."
+        )
+
+    def _create_state(br: list[int]) -> Any:
+        return NoLimitTexasHoldem.create_state(
+            _AUTOMATIONS,
+            True,                           # uniform_antes
+            0,                              # raw_antes
+            blinds_vector,                  # raw_blinds_or_straddles
+            _MIN_BET,                       # min_bet
+            tuple(br),
+            _N_PLAYERS,
+        )
+
+    try:
+        state = _create_state(bankrolls)
+    except Exception:
+        if bankrolls[hero] <= 0:
+            bankrolls[hero] = _OPPONENT_REBUY_STACK
+            gs.master_bankrolls = bankrolls
+            msg_parts.append(
+                f"You had no chips; ${_OPPONENT_REBUY_STACK} applied so the next hand could start."
+            )
+            state = _create_state(bankrolls)
+        else:
+            raise
     gs.poker_state = state
     gs.deck = _deck_from_state(state)
     gs.last_action = {}
     gs.terminal_payload = None
-    gs.action_error = ""
+    gs.action_error = " ".join(msg_parts) if msg_parts else ""
     gs.bot_error = ""
     gs.hand_resolved = False
     gs.resolved_hand_id = None
@@ -523,13 +553,11 @@ def _seat_role_map(button_index: int, seat_count: int) -> dict[int, str]:
     return {dealer: "D", sb_seat: "SB", bb_seat: "BB"}
 
 
-def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
-    """Return (street_bet, total_hand_bet) for the hero seat."""
-    bets = list(getattr(state, "bets", []) or [])
-    street_bet = float(bets[hero]) if hero < len(bets) else 0.0
+def _seat_total_hand_commit(state: Any, seat: int) -> float:
+    """Chips this seat has put into the pot across the whole hand (blinds, calls, raises)."""
     total = 0.0
     for op in list(getattr(state, "operations", []) or []):
-        if getattr(op, "player_index", None) != hero:
+        if getattr(op, "player_index", None) != seat:
             continue
         amount = getattr(op, "amount", None)
         if amount is not None and type(op).__name__ in {
@@ -539,7 +567,14 @@ def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
             "CompletionBettingOrRaisingTo",
         }:
             total += float(amount)
-    return street_bet, total
+    return total
+
+
+def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
+    """Return (street_bet, total_hand_bet) for the hero seat."""
+    bets = list(getattr(state, "bets", []) or [])
+    street_bet = float(bets[hero]) if hero < len(bets) else 0.0
+    return street_bet, _seat_total_hand_commit(state, hero)
 
 
 def _hero_raise_count(state: Any, hero: int) -> int:
@@ -676,6 +711,7 @@ def _build_view(gs: GameState) -> dict[str, Any]:
             "prediction_stage": "preflop",
             "bluff_prob_by_seat": [None] * _N_PLAYERS,
             "bluff_prediction_error": "",
+            "total_hand_bet_by_seat": [0.0] * _N_PLAYERS,
         }
 
     hand_complete = not bool(getattr(state, "status", True))
@@ -823,6 +859,10 @@ def _build_view(gs: GameState) -> dict[str, Any]:
     current_street_pot = live_current_street_pot
     current_street_label = _street_metric_label(phase_key)
 
+    total_hand_bet_by_seat = [
+        _seat_total_hand_commit(state, i) for i in range(_N_PLAYERS)
+    ]
+
     return {
         "hero": hero,
         "seat_count": _N_PLAYERS,
@@ -858,6 +898,7 @@ def _build_view(gs: GameState) -> dict[str, Any]:
         "prediction_stage": phase_key,
         "bluff_prob_by_seat": bluff_prob_by_seat,
         "bluff_prediction_error": bluff_prediction_error,
+        "total_hand_bet_by_seat": total_hand_bet_by_seat,
     }
 
 
@@ -993,6 +1034,13 @@ def ensure_initialized(gs: GameState) -> None:
 
 def new_hand(gs: GameState, *, advance_button: bool) -> None:
     _new_hand(gs, advance_button=advance_button)
+
+
+def restart_table(gs: GameState) -> None:
+    """Reset every seat to the starting stack and button to seat 0, then deal."""
+    gs.master_bankrolls = [_STARTING_STACK] * _N_PLAYERS
+    gs.button_index = 0
+    _new_hand(gs, advance_button=False)
 
 
 def run_dealer(gs: GameState) -> None:

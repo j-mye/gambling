@@ -10,8 +10,15 @@ import argparse
 import http.server
 import os
 import socketserver
+import sys
 import webbrowser
 from pathlib import Path
+
+
+class _ReusableTCPServer(socketserver.TCPServer):
+    """Avoid WinError 10048 / EADDRINUSE when rebinding shortly after a prior run."""
+
+    allow_reuse_address = True
 
 
 def _serve_poker_page(host: str, port: int) -> None:
@@ -20,7 +27,18 @@ def _serve_poker_page(host: str, port: int) -> None:
         raise SystemExit(f"Missing poker_page directory: {root}")
     os.chdir(root)
     handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer((host, port), handler) as httpd:
+    try:
+        httpd = _ReusableTCPServer((host, port), handler)
+    except OSError as exc:
+        hint = (
+            f"Try another port: python main.py serve-poker --port {port + 1}\n"
+            "This entrypoint is plain Python (static HTTP), not Streamlit — "
+            "use: python main.py serve-poker"
+        )
+        raise SystemExit(
+            f"Could not listen on {host!s}:{port} ({exc}).\n{hint}"
+        ) from exc
+    with httpd:
         url = f"http://{host}:{port}/index.html"
         print(f"Serving {root} at {url}")
         try:
@@ -42,4 +60,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if "streamlit" in sys.modules:
+        raise SystemExit(
+            "This file is not a Streamlit app — it starts a small static HTTP server.\n"
+            "From the project root run:\n"
+            "  python main.py serve-poker\n"
+            "Then open the printed URL (default http://127.0.0.1:8765/index.html)."
+        )
     main()

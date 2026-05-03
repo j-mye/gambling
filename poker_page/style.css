@@ -165,7 +165,7 @@ body {
   gap: clamp(0.35rem, 1vw, 0.75rem);
 }
 
-/* Hero | stats/coach | controls — 25% / 50% / 25% on wide layouts */
+/* Hero | stats/charts | controls — 25% / 50% / 25% on wide layouts */
 .app-footer-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
@@ -220,17 +220,13 @@ body {
   line-height: 1.1;
 }
 
-.app-footer-coach-panel {
+.app-footer-bluff-chart-panel {
   min-height: 0;
 }
 
-.app-footer-coach-body {
-  min-height: 0;
-}
-
-.app-footer-coach-text {
-  font-size: clamp(0.62rem, 1.25vw, 0.78rem);
-  line-height: 1.35;
+.app-footer-bluff-chart-canvas-wrap {
+  min-height: clamp(3rem, 10dvh, 5rem);
+  position: relative;
 }
 
 .app-footer-hero-stacks {

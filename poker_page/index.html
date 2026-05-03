@@ -5,6 +5,7 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <link rel="stylesheet" href="https://pyscript.net/releases/2024.11.1/core.css"/>
 <link rel="stylesheet" href="style.css"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script type="module" src="https://pyscript.net/releases/2024.11.1/core.js"></script>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
@@ -113,17 +114,12 @@
 </head>
 <body class="font-ui-sans-reg text-ui-sans-reg app-shell">
 <!-- TopAppBar -->
-<header class="bg-slate-950 text-emerald-500 font-sans text-[clamp(0.65rem,1.4vw,0.875rem)] tracking-wide uppercase border-b border-slate-800 flex justify-between items-center w-full z-50 shrink-0 px-[clamp(0.5rem,2vw,1.25rem)] py-2 min-h-[2.75rem]">
-<div class="flex items-center gap-[clamp(0.5rem,2vw,2rem)] min-w-0">
+<header class="bg-slate-950 text-emerald-500 font-sans text-[clamp(0.65rem,1.4vw,0.875rem)] tracking-wide uppercase border-b border-slate-800 flex justify-between items-center w-full z-50 shrink-0 px-[clamp(0.5rem,2vw,1.25rem)] py-2 min-h-[2.75rem] gap-3">
+<div class="flex items-center gap-[clamp(0.5rem,2vw,2rem)] min-w-0 shrink">
 <span class="font-bold tracking-tighter text-slate-50 truncate text-[clamp(0.8rem,2.2vw,1.35rem)]">POKER SIMULATOR</span>
 </div>
-<div class="flex items-center gap-4">
-<button type="button" id="coach-toggle" py-click="handle_coach_toggle" class="flex items-center gap-2 px-3 py-1 bg-slate-900 rounded-full border border-slate-800 cursor-pointer" aria-pressed="true" aria-label="Toggle coach mode">
-<span class="text-ui-label text-slate-400">Coach Mode</span>
-<div id="coach-toggle-track" class="w-8 h-4 rounded-full relative transition-colors bg-emerald-500">
-<div id="coach-toggle-knob" class="absolute right-0.5 top-0.5 w-3 h-3 rounded-full shadow transition-all bg-white"></div>
-</div>
-</button>
+<div class="flex items-center shrink-0">
+<button type="button" id="btn-restart-table" py-click="handle_restart_table" class="px-2 sm:px-3 py-1 bg-slate-900 hover:bg-slate-800 rounded-lg border border-slate-700 text-slate-200 text-[10px] sm:text-ui-label font-semibold uppercase tracking-wide cursor-pointer" title="Reset all stacks to $200 and deal from seat 1 as button">Restart table</button>
 </div>
 </header>
 <!-- Main Content Canvas (Poker Table) -->
@@ -282,18 +278,17 @@
 </div>
 <div id="hand-over-banner" class="hidden w-full max-w-md px-3 py-2 rounded-lg border border-emerald-500/50 bg-slate-900/90 text-emerald-400 text-sm font-bold text-center"></div>
 </div>
-<!-- Middle: win probability + coach (50% / 50%, full column height) -->
+<!-- Middle: win probability + pot by street -->
 <div class="app-footer-col app-footer-middle-stats min-w-0 h-full min-h-0 flex flex-col px-0 sm:px-[clamp(0.35rem,1.2vw,1rem)] border-slate-800 sm:border-r py-1">
 <div class="app-footer-analytics-row">
 <div class="app-footer-analytics-half bg-surface-container-high border border-outline-variant rounded-lg p-2 min-h-0">
 <span class="app-footer-analytics-label text-slate-400 uppercase tracking-wide shrink-0">Win probability</span>
 <div id="stat-win-prob" class="app-footer-win-prob-value font-display-mono text-emerald-500 font-semibold">—</div>
 </div>
-<div class="app-footer-analytics-half app-footer-coach-panel bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-2 min-h-0 flex flex-col">
-<span class="app-footer-analytics-label text-slate-400 uppercase tracking-wide shrink-0">Coach</span>
-<div class="app-footer-coach-body flex flex-1 min-h-0 gap-2 overflow-hidden">
-<span class="material-symbols-outlined text-emerald-500 text-sm shrink-0 mt-0.5">lightbulb</span>
-<p id="coach-text" class="app-footer-coach-text text-slate-300 leading-snug min-h-0 flex-1 overflow-y-auto"></p>
+<div class="app-footer-analytics-half app-footer-bluff-chart-panel bg-surface-container-high border border-outline-variant rounded-lg p-2 min-h-0 flex flex-col">
+<span class="app-footer-analytics-label text-slate-400 uppercase tracking-wide shrink-0">Bluff signal by seat (%)</span>
+<div class="app-footer-bluff-chart-canvas-wrap flex-1 min-h-0 relative w-full">
+<canvas id="footer-bluff-chart" aria-label="Estimated bluff likelihood per seat"></canvas>
 </div>
 </div>
 </div>
@@ -322,5 +317,105 @@ Raise
 </div>
 </div>
 </footer>
+<script>
+(function () {
+  var bluffChart = null;
+  function bluffBarColor(i, hero, folded) {
+    if (folded[i]) return "rgba(51,65,85,0.28)";
+    if (i === hero) return "rgba(16,185,129,0.78)";
+    return "rgba(139,92,246,0.78)";
+  }
+  /** PyScript may pass PyProxy list-like values — avoid .length / .slice assumptions. */
+  function sixNums(v) {
+    var out = [];
+    for (var i = 0; i < 6; i++) {
+      try {
+        out.push(Number(v != null && v[i] !== undefined ? v[i] : 0) || 0);
+      } catch (e) {
+        out.push(0);
+      }
+    }
+    return out;
+  }
+  function sixBools(v) {
+    var out = [];
+    for (var i = 0; i < 6; i++) {
+      try {
+        out.push(!!(v != null && v[i]));
+      } catch (e) {
+        out.push(false);
+      }
+    }
+    return out;
+  }
+  window._initPokerCharts = function () {
+    if (typeof Chart === "undefined") return;
+    var fc = document.getElementById("footer-bluff-chart");
+    if (fc && !bluffChart) {
+      bluffChart = new Chart(fc.getContext("2d"), {
+        type: "bar",
+        data: {
+          labels: ["1", "2", "3", "4", "5", "6"],
+          datasets: [
+            {
+              label: "Bluff %",
+              data: [0, 0, 0, 0, 0, 0],
+              backgroundColor: "#64748b",
+              borderRadius: 3,
+              maxBarThickness: 18,
+            },
+          ],
+        },
+        options: {
+          animation: false,
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  var v = Number(ctx.parsed && ctx.parsed.y !== undefined ? ctx.parsed.y : ctx.raw) || 0;
+                  return "Bluff signal: " + v.toFixed(0) + "%";
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: "#94a3b8", maxRotation: 0, font: { size: 9 } },
+              grid: { display: false },
+            },
+            y: {
+              min: 0,
+              max: 100,
+              ticks: {
+                color: "#64748b",
+                font: { size: 8 },
+                callback: function (v) {
+                  return v + "%";
+                },
+              },
+              grid: { color: "rgba(100,116,139,0.1)" },
+            },
+          },
+        },
+      });
+    }
+  };
+  window._updatePokerCharts = function (hero, bluffPcts, folded) {
+    window._initPokerCharts();
+    hero = Number(hero) || 0;
+    if (!bluffChart) return;
+    var b6 = sixNums(bluffPcts);
+    var f6 = sixBools(folded);
+    bluffChart.data.datasets[0].data = b6;
+    bluffChart.data.datasets[0].backgroundColor = b6.map(function (_, i) {
+      return bluffBarColor(i, hero, f6);
+    });
+    bluffChart.update("none");
+  };
+})();
+</script>
 <script type="py" src="./main.py" config="./pyscript.toml"></script>
 </body></html>

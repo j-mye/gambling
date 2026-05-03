@@ -6,6 +6,6 @@ packages = ["pokerkit"]
 "./game_state.py" = "./game_state.py"
 "./cards_html.py" = "./cards_html.py"
 "./bot_backend.py" = "./bot_backend.py"
-"./coach_engine.py" = "./coach_engine.py"
 "./live_seat_metrics.py" = "./live_seat_metrics.py"
 "./heuristics.py" = "./heuristics.py"
+"./hand_eval.py" = "./hand_eval.py"
