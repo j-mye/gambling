@@ -72,20 +72,45 @@ body {
 
 /* Seat card size scales with felt so all six fit inside narrow viewports. */
 .poker-table-surface .seat-panel {
-  width: min(100%, clamp(3.5rem, 26cqw, 7.25rem));
-  min-height: clamp(2.35rem, 16cqh, 5.25rem);
-  max-width: min(100%, 34cqw);
+  width: min(100%, clamp(7.25rem, 36cqw, 11.5rem));
+  min-width: clamp(6.75rem, 32cqw, 10rem);
+  min-height: clamp(2.55rem, 17cqh, 5.5rem);
+  max-width: min(100%, 44cqw);
 }
 
-.poker-table-surface .seat-avatar {
-  width: clamp(1.25rem, 7cqw, 1.85rem);
-  height: clamp(1.25rem, 7cqw, 1.85rem);
+/* Uniform square thumbs; object-position tuned per guest in JS for face bias. */
+.poker-table-surface .seat-avatar-frame {
+  width: clamp(2rem, 10.5cqw, 2.75rem);
+  height: clamp(2rem, 10.5cqw, 2.75rem);
+  flex-shrink: 0;
 }
 
-.poker-table-surface [id^="seat-name-"] {
-  font-size: clamp(0.55rem, 1.7cqw, 0.75rem);
+.poker-table-surface .seat-avatar-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 26%;
+}
+
+.poker-table-surface .seat-name-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  word-break: break-word;
+  hyphens: auto;
   line-height: 1.15;
   font-weight: 600;
+  font-size: clamp(0.46rem, 1.28cqw, 0.72rem);
+}
+
+.poker-table-surface .seat-name-label.seat-name-hero {
+  color: rgb(52 211 153);
+}
+
+.poker-table-surface .seat-avatar-frame.seat-avatar-hero {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.55);
 }
 
 .poker-table-surface [id^="seat-stack-"],
@@ -101,10 +126,6 @@ body {
 
 .poker-table-surface [id^="seat-role-"] {
   font-size: clamp(0.48rem, 1.4cqw, 0.6rem);
-}
-
-.poker-table-surface .seat-avatar .material-symbols-outlined {
-  font-size: clamp(0.85rem, 4cqw, 1.1rem);
 }
 
 .poker-table-surface .seat-holes {

@@ -13,6 +13,8 @@ class GameState:
     master_bankrolls: list[int] = field(default_factory=list)
     button_index: int = 0
     hero: int | None = None
+    # Display names for engine seats 0..5 (celebrity / historical guest list).
+    seat_names: list[str] = field(default_factory=list)
     bot_instances: dict[int, Any] = field(default_factory=dict)
     last_action: dict[int, str] = field(default_factory=dict)
     terminal_payload: dict[str, Any] | None = None

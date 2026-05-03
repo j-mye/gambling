@@ -7,6 +7,7 @@ from typing import Any
 
 from pyscript import document, window
 
+import avatars
 import poker_core
 from cards_html import hero_card_cell
 from game_state import GameState
@@ -161,12 +162,34 @@ def update_ui() -> None:
             and ti_active == es
         )
 
+        names = getattr(state, "seat_names", None) or []
+        guest = (
+            names[engine_seat]
+            if engine_seat < len(names) and str(names[engine_seat]).strip()
+            else f"Seat {int(engine_seat) + 1}"
+        )
+
         nm = _el(f"seat-name-{ui_slot}")
         if nm is not None:
             if engine_seat == hero:
-                nm.innerText = f"YOU (Seat {int(hero) + 1})"
+                nm.innerText = f"YOU · {guest}"
             else:
-                nm.innerText = f"Seat {int(engine_seat) + 1}"
+                nm.innerText = guest
+
+        av_img = _el(f"seat-avatar-{ui_slot}")
+        if av_img is not None:
+            prev = av_img.getAttribute("data-guest-key") or ""
+            if prev != guest:
+                av_img.setAttribute("data-guest-key", guest)
+                av_img.src = avatars.avatar_src_for_guest(guest)
+            try:
+                av_img.style.objectPosition = avatars.avatar_object_position_for_guest(guest)
+            except Exception:
+                pass
+            try:
+                av_img.alt = guest
+            except Exception:
+                pass
 
         st = _el(f"seat-stack-{ui_slot}")
         if st is not None:

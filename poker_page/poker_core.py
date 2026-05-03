@@ -29,6 +29,7 @@ from pokerkit import Automation, NoLimitTexasHoldem
 from bot_backend import BasePokerBot, build_bot_instances, normalize_bot_response
 from cards_html import render_face_down_card, render_face_up_card
 from game_state import GameState
+from table_guests import assign_full_table, ensure_seat_names, replace_guest_at_seat
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,6 @@ _AUTOMATIONS = (
 )
 _N_PLAYERS = 6
 _STARTING_STACK = 200
-_OPPONENT_REBUY_STACK = 100
 _BLINDS = (1, 2)
 _MIN_BET = 2
 
@@ -104,17 +104,17 @@ def _deck_from_state(state: Any) -> list[str]:
 
 def _new_hand(gs: GameState, *, advance_button: bool) -> None:
     """Create a fresh game and deal hole cards."""
+    ensure_seat_names(gs)
     bankrolls = _normalize_bankrolls(
         gs.master_bankrolls or [_STARTING_STACK] * _N_PLAYERS
     )
     hero = int(gs.hero) % _N_PLAYERS
-    opponent_rebuys = 0
     for i in range(_N_PLAYERS):
         if i == hero:
             continue
         if bankrolls[i] <= 0:
-            bankrolls[i] = _OPPONENT_REBUY_STACK
-            opponent_rebuys += 1
+            replace_guest_at_seat(gs, i)
+            bankrolls[i] = _STARTING_STACK
     gs.master_bankrolls = bankrolls
     button_index = int(gs.button_index) % _N_PLAYERS
     if advance_button:
@@ -123,11 +123,6 @@ def _new_hand(gs: GameState, *, advance_button: bool) -> None:
     blinds_vector = _blinds_vector_from_button(button_index, _N_PLAYERS)
 
     msg_parts: list[str] = []
-    if opponent_rebuys:
-        msg_parts.append(
-            f"{opponent_rebuys} opponent(s) had no chips and rebought at "
-            f"${_OPPONENT_REBUY_STACK} (other stacks unchanged)."
-        )
 
     def _create_state(br: list[int]) -> Any:
         return NoLimitTexasHoldem.create_state(
@@ -144,10 +139,11 @@ def _new_hand(gs: GameState, *, advance_button: bool) -> None:
         state = _create_state(bankrolls)
     except Exception:
         if bankrolls[hero] <= 0:
-            bankrolls[hero] = _OPPONENT_REBUY_STACK
+            replace_guest_at_seat(gs, hero)
+            bankrolls[hero] = _STARTING_STACK
             gs.master_bankrolls = bankrolls
             msg_parts.append(
-                f"You had no chips; ${_OPPONENT_REBUY_STACK} applied so the next hand could start."
+                f"You had no chips; ${_STARTING_STACK} applied so the next hand could start."
             )
             state = _create_state(bankrolls)
         else:
@@ -1040,6 +1036,7 @@ def restart_table(gs: GameState) -> None:
     """Reset every seat to the starting stack and button to seat 0, then deal."""
     gs.master_bankrolls = [_STARTING_STACK] * _N_PLAYERS
     gs.button_index = 0
+    assign_full_table(gs)
     _new_hand(gs, advance_button=False)
 
 
