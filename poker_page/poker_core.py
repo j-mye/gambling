@@ -224,6 +224,14 @@ def _legal_moves_snapshot(state: Any, seat: int) -> dict[str, Any]:
         max_raise_to = int(val) if val is not None else None
     except Exception:
         max_raise_to = None
+
+    pot_total, _ = _live_pot_metrics(state)
+    pot_odds = (
+        float(call_amount) / max(float(pot_total) + float(call_amount), 1e-9)
+        if call_amount > 0
+        else 0.0
+    )
+
     return {
         "seat": seat,
         "turn_index": getattr(state, "turn_index", None),
@@ -234,6 +242,8 @@ def _legal_moves_snapshot(state: Any, seat: int) -> dict[str, Any]:
         "can_raise": min_raise_to is not None and max_raise_to is not None,
         "min_raise_to": min_raise_to,
         "max_raise_to": max_raise_to,
+        "pot_total": float(pot_total),
+        "pot_odds": float(pot_odds),
     }
 
 
@@ -906,7 +916,7 @@ def _board_html(view: dict[str, Any]) -> str:
         if i < len(board):
             rank, suit = board[i]
             slot_html.append(
-                "<div class='board-slot card' style='width:72px;height:104px;'>"
+                "<div class='board-slot card'>"
                 + render_face_up_card(
                     rank, suit, classes=f"community-card deal-animate deal-delay-{i}"
                 )
@@ -916,15 +926,22 @@ def _board_html(view: dict[str, Any]) -> str:
             slot_html.append(
                 "<div class='board-slot'>"
                 "<div class='card placeholder' "
-                "style='width:72px;height:104px;border:1px dashed rgba(130,154,177,0.85);"
+                "style='width:var(--card-w,72px);height:var(--card-h,104px);max-width:100%;"
+                "border:1px dashed rgba(130,154,177,0.85);"
                 "border-radius:12px;background:rgba(15,23,42,0.25);"
                 "box-shadow:inset 0 0 0 1px rgba(188,204,220,0.2);'></div>"
                 "</div>"
             )
-    return (
-        "<div class='board-row-fixed' "
-        "style='display:flex;justify-content:center;gap:10px;width:100%;align-items:center;'>"
+    row = (
+        "<div class='board-row-fixed'>"
         + "".join(slot_html)
+        + "</div>"
+    )
+    return (
+        "<div class='board-cards-inner-grid'>"
+        "<div class='board-side-spacer' aria-hidden='true'></div>"
+        + row
+        + "<div class='board-side-spacer' aria-hidden='true'></div>"
         + "</div>"
     )
 

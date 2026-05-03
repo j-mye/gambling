@@ -1,3 +1,227 @@
+/* Full-viewport shell: header + main + footer fill 100dvh without overflow. */
+html {
+  height: 100%;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  box-sizing: border-box;
+}
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+:root {
+  /* Gentler scaling: higher floor, lower vmin slope than before. */
+  --card-w: clamp(42px, 3.5vmin + 0.35rem, 76px);
+  --card-h: clamp(58px, 4.9vmin + 0.45rem, 106px);
+  --footer-pad-y: clamp(0.3rem, 1dvh, 0.65rem);
+  --footer-pad-x: clamp(0.3rem, 1.2vw, 0.85rem);
+}
+
+.app-shell {
+  min-height: 100dvh;
+  max-height: 100dvh;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+}
+
+.poker-table-stage {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Room for seats anchored near edges (no overflow clip on felt). */
+  padding: clamp(8px, 3.5cqmin, 44px) clamp(6px, 2.8cqmin, 36px);
+  container-type: size;
+  container-name: tablestage;
+  overflow: visible;
+}
+
+.poker-table-surface {
+  position: relative;
+  width: min(100%, calc(100cqh * 21 / 9));
+  max-width: 100%;
+  aspect-ratio: 21 / 9;
+  max-height: min(100cqh, calc(100cqw * 9 / 21));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+  /* Seats extend to or slightly past the rim; must not clip. */
+  overflow: visible;
+  container-type: size;
+  container-name: felt;
+}
+
+/* Seat card size scales with felt so all six fit inside narrow viewports. */
+.poker-table-surface .seat-panel {
+  width: min(100%, clamp(3.5rem, 26cqw, 7.25rem));
+  min-height: clamp(2.35rem, 16cqh, 5.25rem);
+  max-width: min(100%, 34cqw);
+}
+
+.poker-table-surface .seat-avatar {
+  width: clamp(1.25rem, 7cqw, 1.85rem);
+  height: clamp(1.25rem, 7cqw, 1.85rem);
+}
+
+.poker-table-surface [id^="seat-name-"] {
+  font-size: clamp(0.55rem, 1.7cqw, 0.75rem);
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+.poker-table-surface [id^="seat-stack-"],
+.poker-table-surface [id^="seat-bluff-"] {
+  font-size: clamp(0.5rem, 1.55cqw, 0.68rem);
+  line-height: 1.1;
+}
+
+.poker-table-surface [id^="seat-action-"] {
+  font-size: clamp(0.48rem, 1.45cqw, 0.62rem);
+  line-height: 1.15;
+}
+
+.poker-table-surface [id^="seat-role-"] {
+  font-size: clamp(0.48rem, 1.4cqw, 0.6rem);
+}
+
+.poker-table-surface .seat-avatar .material-symbols-outlined {
+  font-size: clamp(0.85rem, 4cqw, 1.1rem);
+}
+
+.poker-table-surface .seat-holes {
+  min-height: clamp(1.25rem, 11cqh, 2.1rem);
+}
+
+.board-cards-wrap {
+  min-height: 0;
+  flex: 0 1 auto;
+  display: block;
+  width: 100%;
+  padding: 0 clamp(2px, 1vmin, 8px);
+}
+
+/* Community row sits in the center 50% of felt width (25 / 50 / 25). */
+.board-cards-inner-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+  width: 100%;
+  align-items: center;
+  min-height: 0;
+}
+
+.board-side-spacer {
+  min-width: 0;
+}
+
+.app-footer {
+  flex-shrink: 0;
+  min-height: 0;
+  width: 100%;
+  padding: var(--footer-pad-y) var(--footer-pad-x);
+}
+
+.app-footer-inner {
+  width: 100%;
+  max-width: 100%;
+  align-items: stretch;
+  gap: clamp(0.35rem, 1vw, 0.75rem);
+}
+
+/* Hero | stats/coach | controls — 25% / 50% / 25% on wide layouts */
+.app-footer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+@media (max-width: 1024px) {
+  .app-footer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.app-footer-col {
+  min-width: 0;
+}
+
+.app-footer-hero-stacks {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: clamp(0.35rem, 1.5vw, 0.75rem);
+  align-items: baseline;
+}
+
+.app-footer-hero-stacks .hero-money-label {
+  font-size: clamp(0.5rem, 1.2vw, 0.65rem);
+}
+
+.app-footer-hero-stacks .hero-money-value {
+  font-size: clamp(0.65rem, 1.8vw, 0.8rem);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.app-footer-btn {
+  padding-top: clamp(0.35rem, 1dvh, 0.55rem);
+  padding-bottom: clamp(0.35rem, 1dvh, 0.55rem);
+  font-size: clamp(0.6rem, 1.4vw, 0.7rem);
+}
+
+.hole-card-back {
+  width: var(--card-w);
+  height: var(--card-h);
+  max-width: 100%;
+  border-radius: 0.35rem;
+  background: rgb(30 41 59);
+  border: 1px solid rgb(71 85 105);
+}
+
+.hero-card-cell {
+  width: var(--card-w);
+  height: var(--card-h);
+  max-width: 100%;
+  border-radius: 0.35rem;
+  background: rgb(248 250 252);
+  border: 1px solid rgb(226 232 240);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.hero-card-cell .hc-rank {
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(0.65rem, 2.2vmin, 1rem);
+  line-height: 1;
+}
+
+.hero-card-cell .hc-suit {
+  font-size: clamp(0.85rem, 3.2vmin, 1.15rem);
+  line-height: 1;
+}
+
 /* Poker table DOM (trimmed from Streamlit-era card_html poker_table_css). */
 .player-seat {
   border: 1px solid #334e68;
@@ -24,9 +248,14 @@
   font-size: 12px;
   color: #bcccdc;
 }
-.active-turn {
+/* Streamlit / legacy seats: outer ring. PyScript uses .seat-panel.active-turn below. */
+.active-turn:not(.seat-panel) {
   box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.85);
   border-radius: 0.5rem;
+}
+
+.poker-table-surface .seat-panel.active-turn {
+  box-shadow: inset 0 0 0 2px rgba(251, 191, 36, 0.92);
 }
 .action-badge {
   position: absolute;
@@ -41,16 +270,21 @@
   z-index: 3;
 }
 .board-row-fixed {
+  grid-column: 2;
   display: flex;
-  gap: 10px;
+  gap: clamp(4px, 1.2vmin, 12px);
   justify-content: center;
+  justify-self: center;
   width: 100%;
-  min-height: 104px;
+  max-width: 100%;
+  min-width: 0;
+  min-height: calc(var(--card-h) + 8px);
   align-items: center;
 }
 .board-slot {
-  width: 72px;
-  height: 104px;
+  width: var(--card-w);
+  height: var(--card-h);
+  max-width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -22,7 +22,8 @@ def _display_rank(rank: str) -> str:
 
 def _card_shell(inner_html: str, extra_style: str = "", classes: str = "") -> str:
     return (
-        f"<div class='{classes}' style='width:72px;height:104px;background:{CARD_BG};border-radius:{CARD_RADIUS};"
+        f"<div class='{classes}' style='width:var(--card-w,72px);height:var(--card-h,104px);"
+        f"max-width:100%;background:{CARD_BG};border-radius:{CARD_RADIUS};"
         f"box-shadow:{CARD_SHADOW};border:1px solid #D9E2EC;display:flex;align-items:center;"
         f"justify-content:center;position:relative;{extra_style}'>{inner_html}</div>"
     )
@@ -33,9 +34,11 @@ def render_face_up_card(rank: str, suit: str, classes: str = "") -> str:
     sym = SUIT_SYMBOLS.get(suit, "?")
     color = _suit_color(suit)
     inner = (
-        f"<div style='position:absolute;top:6px;left:8px;color:{color};font-weight:700;font-size:15px;'>{label}{sym}</div>"
-        f"<div style='font-size:30px;color:{color};'>{sym}</div>"
-        f"<div style='position:absolute;bottom:6px;right:8px;color:{color};font-weight:700;font-size:15px;"
+        f"<div style='position:absolute;top:clamp(3px,0.8vmin,8px);left:clamp(4px,1vmin,10px);"
+        f"color:{color};font-weight:700;font-size:clamp(10px,2.1vmin,15px);'>{label}{sym}</div>"
+        f"<div style='font-size:clamp(18px,4.5vmin,32px);color:{color};'>{sym}</div>"
+        f"<div style='position:absolute;bottom:clamp(3px,0.8vmin,8px);right:clamp(4px,1vmin,10px);"
+        f"color:{color};font-weight:700;font-size:clamp(10px,2.1vmin,15px);"
         f"transform:rotate(180deg);'>{label}{sym}</div>"
     )
     return _card_shell(inner, classes=classes)
@@ -46,18 +49,20 @@ def render_face_down_card(classes: str = "") -> str:
         f"background:repeating-linear-gradient(45deg,{CARD_BACK_PRIMARY},"
         f"{CARD_BACK_PRIMARY} 8px,{CARD_BACK_SECONDARY} 8px,{CARD_BACK_SECONDARY} 16px);"
     )
-    inner = "<div style='width:56px;height:86px;border:2px solid rgba(255,255,255,0.75);border-radius:8px;'></div>"
+    inner = (
+        "<div style='width:78%;height:82%;max-width:56px;max-height:86px;border:2px solid "
+        "rgba(255,255,255,0.75);border-radius:8px;'></div>"
+    )
     return _card_shell(inner, extra_style=pattern, classes=classes)
 
 
 def hero_card_cell(rank: str, suit: str) -> str:
-    """Compact footer card (Tailwind-friendly inner content)."""
+    """Compact hero / seat hole card; size follows :root --card-w/--card-h."""
     label = _display_rank(rank)
     sym = SUIT_SYMBOLS.get(suit, "?")
     color = "text-red-600" if suit in {"H", "D"} else "text-slate-900"
     return (
-        f"<div class='w-14 h-20 rounded bg-slate-50 border border-slate-200 flex flex-col items-center "
-        f"justify-center shadow-lg'>"
-        f"<span class='font-display-mono text-display-mono {color} leading-none'>{label}</span>"
-        f"<span class='{color} text-lg'>{sym}</span></div>"
+        f"<div class='hero-card-cell'>"
+        f"<span class='hc-rank {color}'>{label}</span>"
+        f"<span class='hc-suit {color}'>{sym}</span></div>"
     )

@@ -155,15 +155,10 @@ def update_ui() -> None:
     ti_raw = view.get("turn_index")
     ti_int: int | None = int(ti_raw) if ti_raw is not None else None
     for ui_slot, engine_seat in enumerate(eng_order):
-        shell = _el(f"seat-shell-{ui_slot}")
-        if shell is None:
+        inner = _el(f"seat-inner-{ui_slot}")
+        if inner is None:
             continue
         is_active = (ti_int == int(engine_seat)) and not view["hand_complete"]
-        cls = shell.className or ""
-        if is_active and "active-turn" not in cls:
-            shell.className = (cls + " active-turn").strip()
-        elif not is_active and "active-turn" in cls:
-            shell.className = " ".join(c for c in cls.split() if c != "active-turn").strip()
 
         nm = _el(f"seat-name-{ui_slot}")
         if nm is not None:
@@ -182,16 +177,13 @@ def update_ui() -> None:
             if engine_seat < len(view["folded"])
             else False
         )
-        inner = _el(f"seat-inner-{ui_slot}")
-        if inner is not None:
-            icls = inner.className or ""
-            if folded_now:
-                if "seat-folded" not in icls:
-                    inner.className = (icls + " seat-folded").strip()
-            else:
-                inner.className = " ".join(
-                    c for c in icls.split() if c != "seat-folded"
-                ).strip()
+        icls = inner.className or ""
+        parts = [c for c in icls.split() if c and c not in ("seat-folded", "active-turn")]
+        if folded_now:
+            parts.append("seat-folded")
+        if is_active:
+            parts.append("active-turn")
+        inner.className = " ".join(parts).strip()
 
         blf = _el(f"seat-bluff-{ui_slot}")
         if blf is not None:
@@ -233,8 +225,7 @@ def update_ui() -> None:
                         hole_html = "".join(hero_card_cell(r, s) for r, s in hole)
                     else:
                         hole_html = "".join(
-                            "<div class='w-8 h-11 rounded bg-slate-800 border border-slate-600'></div>"
-                            for _ in range(len(hole) or 2)
+                            "<div class='hole-card-back'></div>" for _ in range(len(hole) or 2)
                         )
                 holes.innerHTML = hole_html
 
@@ -354,10 +345,10 @@ async def run_bots() -> None:
             if ti == int(state.hero):
                 break
             update_ui()
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(0.15)
             poker_core.run_one_bot_turn(state)
             update_ui()
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.08)
     finally:
         state.bots_running = False
         _set_controls_disabled(False)

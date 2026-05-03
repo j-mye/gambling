@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html class="dark" lang="en"><head>
+<html class="dark h-full" lang="en"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <link rel="stylesheet" href="https://pyscript.net/releases/2024.11.1/core.css"/>
@@ -111,11 +111,11 @@
         }
     </style>
 </head>
-<body class="font-ui-sans-reg text-ui-sans-reg overflow-hidden flex flex-col h-screen">
+<body class="font-ui-sans-reg text-ui-sans-reg app-shell">
 <!-- TopAppBar -->
-<header class="bg-slate-950 text-emerald-500 font-sans text-sm tracking-wide uppercase border-b border-slate-800 flex justify-between items-center w-full px-6 h-14 z-50 flex-shrink-0">
-<div class="flex items-center gap-8">
-<span class="text-xl font-bold tracking-tighter text-slate-50">POKER SIMULATOR</span>
+<header class="bg-slate-950 text-emerald-500 font-sans text-[clamp(0.65rem,1.4vw,0.875rem)] tracking-wide uppercase border-b border-slate-800 flex justify-between items-center w-full z-50 shrink-0 px-[clamp(0.5rem,2vw,1.25rem)] py-2 min-h-[2.75rem]">
+<div class="flex items-center gap-[clamp(0.5rem,2vw,2rem)] min-w-0">
+<span class="font-bold tracking-tighter text-slate-50 truncate text-[clamp(0.8rem,2.2vw,1.35rem)]">POKER SIMULATOR</span>
 </div>
 <div class="flex items-center gap-4">
 <button type="button" id="coach-toggle" py-click="handle_coach_toggle" class="flex items-center gap-2 px-3 py-1 bg-slate-900 rounded-full border border-slate-800 cursor-pointer" aria-pressed="true" aria-label="Toggle coach mode">
@@ -127,22 +127,22 @@
 </div>
 </header>
 <!-- Main Content Canvas (Poker Table) -->
-<main class="relative flex-grow w-full flex flex-col items-center justify-center p-xl overflow-hidden">
-<!-- The Table Area -->
-<div class="relative w-full max-w-5xl aspect-[21/9] rounded-[240px] border border-slate-800 poker-table-gradient flex flex-col items-center justify-center">
+<main class="app-main relative flex min-h-0 w-full flex-col overflow-visible">
+<div class="poker-table-stage">
+<div class="poker-table-surface border border-slate-800 poker-table-gradient">
 <!-- Pot Info -->
-<div class="absolute top-1/4 flex flex-col items-center">
-<span class="text-ui-label text-slate-500 uppercase tracking-widest mb-1">Total Pot</span>
-<span id="total-pot" class="font-display-mono text-display-mono text-primary">$0.00</span>
+<div class="absolute top-[22%] flex flex-col items-center z-10">
+<span class="text-[clamp(0.55rem,1.2vmin,0.75rem)] text-slate-500 uppercase tracking-widest mb-0.5">Total Pot</span>
+<span id="total-pot" class="font-display-mono text-primary font-bold leading-tight text-[clamp(0.95rem,3.2vmin,1.75rem)]">$0.00</span>
 </div>
 <!-- Community Cards -->
-<div id="board-cards" class="flex gap-md items-center justify-center min-h-[7rem]"></div>
+<div id="board-cards" class="board-cards-wrap w-full z-[1]"></div>
 <!-- 6 Players Distribution (5 AI + 1 User at bottom) -->
 <!-- AI 1 (Top Left) ui-slot 0 -->
-<div id="seat-shell-0" class="absolute top-0 left-1/4 -translate-x-1/2 -translate-y-1/2">
-<div id="seat-inner-0" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<div id="seat-shell-0" class="absolute top-[6%] left-[22%] z-20 -translate-x-1/2">
+<div id="seat-inner-0" class="seat-panel bg-surface-container border border-outline-variant p-[clamp(0.25rem,0.8vmin,0.5rem)] rounded-lg flex flex-col gap-0.5 sm:gap-1">
+<div class="flex items-center gap-1.5 sm:gap-2">
+<div class="seat-avatar rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
 <span class="material-symbols-outlined">person</span>
 </div>
 <div class="min-w-0 flex-1">
@@ -155,14 +155,14 @@
 <div id="seat-role-0" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
 </div>
 <div id="seat-action-0" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
-<div id="seat-holes-0" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+<div id="seat-holes-0" class="seat-holes flex gap-0.5 sm:gap-1 justify-center items-center flex-1 min-h-0"></div>
 </div>
 </div>
 <!-- AI 2 (Top Center) ui-slot 1 -->
-<div id="seat-shell-1" class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
-<div id="seat-inner-1" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1 shadow-lg shadow-emerald-500/10">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<div id="seat-shell-1" class="absolute top-[6%] left-1/2 z-20 -translate-x-1/2">
+<div id="seat-inner-1" class="seat-panel bg-surface-container border border-outline-variant p-[clamp(0.25rem,0.8vmin,0.5rem)] rounded-lg flex flex-col gap-0.5 sm:gap-1 shadow-lg shadow-emerald-500/10">
+<div class="flex items-center gap-1.5 sm:gap-2">
+<div class="seat-avatar rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
 <span class="material-symbols-outlined">person</span>
 </div>
 <div class="min-w-0 flex-1">
@@ -175,14 +175,14 @@
 <div id="seat-role-1" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
 </div>
 <div id="seat-action-1" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
-<div id="seat-holes-1" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+<div id="seat-holes-1" class="seat-holes flex gap-0.5 sm:gap-1 justify-center items-center flex-1 min-h-0"></div>
 </div>
 </div>
 <!-- AI 3 (Top Right) ui-slot 2 -->
-<div id="seat-shell-2" class="absolute top-0 right-1/4 translate-x-1/2 -translate-y-1/2">
-<div id="seat-inner-2" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<div id="seat-shell-2" class="absolute top-[6%] left-[78%] z-20 -translate-x-1/2">
+<div id="seat-inner-2" class="seat-panel bg-surface-container border border-outline-variant p-[clamp(0.25rem,0.8vmin,0.5rem)] rounded-lg flex flex-col gap-0.5 sm:gap-1">
+<div class="flex items-center gap-1.5 sm:gap-2">
+<div class="seat-avatar rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
 <span class="material-symbols-outlined">person</span>
 </div>
 <div class="min-w-0 flex-1">
@@ -195,14 +195,14 @@
 <div id="seat-role-2" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
 </div>
 <div id="seat-action-2" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
-<div id="seat-holes-2" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+<div id="seat-holes-2" class="seat-holes flex gap-0.5 sm:gap-1 justify-center items-center flex-1 min-h-0"></div>
 </div>
 </div>
 <!-- AI 4 (Right Center) ui-slot 3 -->
-<div id="seat-shell-3" class="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2">
-<div id="seat-inner-3" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<div id="seat-shell-3" class="absolute top-1/2 right-[4%] z-20 -translate-y-1/2">
+<div id="seat-inner-3" class="seat-panel bg-surface-container border border-outline-variant p-[clamp(0.25rem,0.8vmin,0.5rem)] rounded-lg flex flex-col gap-0.5 sm:gap-1">
+<div class="flex items-center gap-1.5 sm:gap-2">
+<div class="seat-avatar rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
 <span class="material-symbols-outlined">person</span>
 </div>
 <div class="min-w-0 flex-1">
@@ -215,14 +215,14 @@
 <div id="seat-role-3" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
 </div>
 <div id="seat-action-3" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
-<div id="seat-holes-3" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+<div id="seat-holes-3" class="seat-holes flex gap-0.5 sm:gap-1 justify-center items-center flex-1 min-h-0"></div>
 </div>
 </div>
 <!-- AI 5 (Left Center) ui-slot 4 -->
-<div id="seat-shell-4" class="absolute top-1/2 left-0 -translate-x-1/2 -translate-y-1/2">
-<div id="seat-inner-4" class="bg-surface-container border border-outline-variant w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+<div id="seat-shell-4" class="absolute top-1/2 left-[4%] z-20 -translate-y-1/2">
+<div id="seat-inner-4" class="seat-panel bg-surface-container border border-outline-variant p-[clamp(0.25rem,0.8vmin,0.5rem)] rounded-lg flex flex-col gap-0.5 sm:gap-1">
+<div class="flex items-center gap-1.5 sm:gap-2">
+<div class="seat-avatar rounded bg-slate-800 flex items-center justify-center text-slate-500 shrink-0">
 <span class="material-symbols-outlined">person</span>
 </div>
 <div class="min-w-0 flex-1">
@@ -235,14 +235,14 @@
 <div id="seat-role-4" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
 </div>
 <div id="seat-action-4" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
-<div id="seat-holes-4" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+<div id="seat-holes-4" class="seat-holes flex gap-0.5 sm:gap-1 justify-center items-center flex-1 min-h-0"></div>
 </div>
 </div>
 <!-- User (Bottom Center) ui-slot 5 -->
-<div id="seat-shell-5" class="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2">
-<div id="seat-inner-5" class="bg-emerald-500/10 border-2 border-emerald-500 w-44 min-h-[10rem] p-2 rounded-lg flex flex-col gap-1">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded bg-emerald-500 flex items-center justify-center text-on-primary shrink-0">
+<div id="seat-shell-5" class="absolute bottom-[6%] left-1/2 z-20 -translate-x-1/2">
+<div id="seat-inner-5" class="seat-panel bg-emerald-500/10 border-2 border-emerald-500 p-[clamp(0.25rem,0.8vmin,0.5rem)] rounded-lg flex flex-col gap-0.5 sm:gap-1">
+<div class="flex items-center gap-1.5 sm:gap-2">
+<div class="seat-avatar rounded bg-emerald-500 flex items-center justify-center text-on-primary shrink-0">
 <span class="material-symbols-outlined">person</span>
 </div>
 <div class="min-w-0 flex-1 overflow-hidden">
@@ -255,41 +255,42 @@
 <div id="seat-role-5" class="ml-auto text-[10px] text-slate-500 font-bold shrink-0">&nbsp;</div>
 </div>
 <div id="seat-action-5" class="text-[10px] text-amber-400 font-semibold truncate leading-tight"></div>
-<div id="seat-holes-5" class="flex gap-1 justify-center items-center min-h-[2.75rem] flex-1"></div>
+<div id="seat-holes-5" class="seat-holes flex gap-0.5 sm:gap-1 justify-center items-center flex-1 min-h-0"></div>
+</div>
 </div>
 </div>
 </div>
 </main>
 <!-- Comprehensive Analytical Footer -->
-<footer class="bg-slate-950 border-t border-slate-800 p-3 min-h-[160px] flex-shrink-0 z-50">
-<div class="max-w-[1600px] mx-auto h-full flex gap-lg items-stretch">
+<footer class="app-footer bg-slate-950 border-t border-slate-800 z-50">
+<div class="app-footer-inner app-footer-grid mx-auto">
 <!-- Left: Hero cards, stakes, hand result -->
-<div class="flex flex-col gap-2 border-r border-slate-800 pr-lg py-1 justify-center shrink-0">
-<div class="flex items-start gap-lg">
-<div id="hero-hole-cards" class="flex gap-sm shrink-0"></div>
-<div class="flex flex-col gap-1">
-<div class="flex flex-col gap-0.5">
-<div class="text-[10px] text-slate-500 uppercase tracking-widest">Stack</div>
-<div id="hero-stack" class="font-display-mono text-data-mono-lg text-primary leading-tight">$0.00</div>
+<div class="app-footer-col flex flex-col gap-1.5 border-slate-800 sm:border-r pr-0 sm:pr-[clamp(0.35rem,1.2vw,1rem)] py-1 justify-center shrink-0">
+<div class="flex flex-wrap items-start gap-[clamp(0.3rem,1.2vw,0.85rem)]">
+<div id="hero-hole-cards" class="flex gap-1 sm:gap-sm shrink-0"></div>
+<div class="app-footer-hero-stacks text-slate-400">
+<div class="flex flex-col gap-0 leading-tight">
+<span class="hero-money-label uppercase tracking-widest">Stack</span>
+<span id="hero-stack" class="hero-money-value font-display-mono text-primary">$0.00</span>
 </div>
-<div class="flex flex-col gap-0.5">
-<div class="text-[10px] text-slate-500 uppercase tracking-widest">To Call</div>
-<div id="hero-to-call" class="font-display-mono text-data-mono-lg text-slate-200 leading-tight">$0.00</div>
+<div class="flex flex-col gap-0 leading-tight">
+<span class="hero-money-label uppercase tracking-widest">To Call</span>
+<span id="hero-to-call" class="hero-money-value font-display-mono text-slate-200">$0.00</span>
 </div>
 </div>
 </div>
 <div id="hand-over-banner" class="hidden w-full max-w-md px-3 py-2 rounded-lg border border-emerald-500/50 bg-slate-900/90 text-emerald-400 text-sm font-bold text-center"></div>
 </div>
 <!-- Middle: GTO Analysis Stats -->
-<div class="flex-1 flex flex-col gap-3 px-lg border-r border-slate-800 h-full justify-center">
+<div class="app-footer-col min-w-0 flex flex-col gap-2 px-0 sm:px-[clamp(0.35rem,1.2vw,1rem)] border-slate-800 sm:border-r py-1 justify-center">
 <div class="grid grid-cols-3 gap-4">
 <div class="bg-surface-container-high border border-outline-variant p-2 rounded-lg">
 <span class="text-[10px] text-slate-400 uppercase">Win probability</span>
-<div id="stat-win-prob" class="font-display-mono text-data-mono-lg text-emerald-500">—</div>
+<div id="stat-win-prob" class="font-display-mono text-emerald-500 font-semibold text-[clamp(0.85rem,2.5vmin,1.2rem)]">—</div>
 </div>
 <div class="col-span-2 bg-surface-container-high border border-outline-variant p-2 rounded-lg">
 <span class="text-[10px] text-slate-400 uppercase mb-1 block">Optimal Strategy Distribution</span>
-<div id="gto-bar" class="w-full bg-slate-800 h-6 rounded overflow-hidden flex text-[10px] font-bold"></div>
+<div id="gto-bar" class="w-full bg-slate-800 rounded overflow-hidden flex font-bold text-[clamp(9px,1.5vmin,11px)] h-[clamp(1.25rem,3dvh,1.5rem)]"></div>
 </div>
 </div>
 <div class="bg-emerald-500/5 border border-emerald-500/20 p-2 rounded-lg flex items-start gap-3">
@@ -298,16 +299,16 @@
 </div>
 </div>
 <!-- Right: Betting controls + next hand -->
-<div class="flex flex-col gap-2 min-w-[320px] justify-center shrink-0 py-1">
+<div class="app-footer-col flex flex-col gap-1.5 justify-center shrink-0 py-1">
 <div id="betting-actions" class="flex flex-col gap-1">
 <p id="action-error" class="footer-err text-xs text-red-400"></p>
 <p id="model-error" class="footer-err text-xs text-amber-400/90"></p>
 <div class="flex gap-2">
-<button type="button" id="btn-fold" py-click="handle_fold" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-xs font-bold uppercase py-3 rounded border border-slate-700 transition-all">Fold</button>
-<button type="button" id="btn-call" py-click="handle_call" class="flex-1 bg-secondary-container hover:bg-secondary-container/80 text-white font-mono text-xs font-bold uppercase py-3 rounded transition-all">Check / Call</button>
+<button type="button" id="btn-fold" py-click="handle_fold" class="app-footer-btn flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono font-bold uppercase rounded border border-slate-700 transition-all">Fold</button>
+<button type="button" id="btn-call" py-click="handle_call" class="app-footer-btn flex-1 bg-secondary-container hover:bg-secondary-container/80 text-white font-mono font-bold uppercase rounded transition-all">Check / Call</button>
 </div>
 <div class="flex flex-col gap-2">
-<button type="button" id="btn-raise" py-click="handle_raise" class="bg-primary-container hover:bg-primary-container/90 text-on-primary-container font-mono text-sm font-bold uppercase py-3 rounded flex items-center justify-center gap-2">
+<button type="button" id="btn-raise" py-click="handle_raise" class="app-footer-btn bg-primary-container hover:bg-primary-container/90 text-on-primary-container font-mono font-bold uppercase rounded flex items-center justify-center gap-2">
 <span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">trending_up</span>
 Raise
 </button>
@@ -317,7 +318,7 @@ Raise
 </div>
 </div>
 </div>
-<button type="button" id="btn-next-hand" py-click="handle_next_hand" class="hidden mt-1 bg-slate-700 hover:bg-slate-600 text-white font-mono text-xs font-bold uppercase py-2 rounded border border-slate-600 w-full">Deal Next Hand</button>
+<button type="button" id="btn-next-hand" py-click="handle_next_hand" class="app-footer-btn hidden mt-1 bg-slate-700 hover:bg-slate-600 text-white font-mono font-bold uppercase rounded border border-slate-600 w-full">Deal Next Hand</button>
 </div>
 </div>
 </footer>
