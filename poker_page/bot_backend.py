@@ -15,11 +15,23 @@ USE_HEURISTIC_BOT = True
 VALID_ACTIONS = {"FOLD", "CALL", "CHECK", "RAISE", "BET"}
 
 # Heuristic policy (tunable)
+# Marginal "like the hand" threshold (facing: used for flat-call band, not auto 3-bet).
 AGGRESSION_RAISE = 0.70
+# Unchecked / unopened: open or isolate when strength clears this bar.
+OPENING_RAISE_STRENGTH = 0.75
 WEAK_FOLD = 0.30
 BLUFF_RAISE_PROB = 0.10
 AGGRESSION_JITTER = 0.02
-RAISE_POT_FRACTION = 0.45
+
+# Scaling fear: cost_to_call = call_amount / (pot_total + call_amount) — same as legal_moves["pot_odds"].
+SCALING_FEAR_RATIO = 0.40
+SCALING_FEAR_PREMIUM_STRENGTH = 0.85
+# Facing a bet: no re-raise unless strength strictly exceeds this (stops raise/call/raise loops).
+FACE_RERAISE_MIN_STRENGTH = 0.90
+# All-in raise safety: only commit full stack on calculated raise if strength exceeds this.
+ALL_IN_RAISE_PREMIUM_STRENGTH = 0.98
+# Trapping: fraction of time a planned raise/bet becomes flat call/check.
+TRAP_FLAT_CALL_PROB = 0.30
 
 # StandardHighHand: weakest 7-high … strongest royal; indices from PokerKit 0.7.3.
 _STANDARD_HIGH_MAX_INDEX = 7461
@@ -121,16 +133,61 @@ def _normalized_strength(hole_cards: list[str], state: Any) -> float:
         return _preflop_strength(hole_cards)
 
 
+def _seat_stack(state: Any, seat: int) -> int:
+    try:
+        stacks = list(getattr(state, "stacks", None) or [])
+        if 0 <= seat < len(stacks):
+            return int(stacks[seat])
+    except Exception:
+        pass
+    return 0
+
+
+def _seat_street_bet(state: Any, seat: int) -> int:
+    try:
+        bets = list(getattr(state, "bets", None) or [])
+        if 0 <= seat < len(bets):
+            return int(bets[seat])
+    except Exception:
+        return 0
+
+
+def _chips_to_complete_to(state: Any, seat: int, target_to: int) -> int:
+    """Extra chips from this seat's stack needed to complete a raise/bet to target_to."""
+    return max(0, int(target_to) - _seat_street_bet(state, seat))
+
+
+def _cost_to_call_ratio(legal_moves: dict[str, Any]) -> float:
+    """call_amount / (pot_total + call_amount); mirrors poker_core._legal_moves_snapshot pot_odds."""
+    cached = legal_moves.get("pot_odds")
+    if cached is not None:
+        return float(cached)
+    ca = int(legal_moves.get("call_amount", 0) or 0)
+    if ca <= 0:
+        return 0.0
+    pt = float(legal_moves.get("pot_total", 0.0) or 0.0)
+    return float(ca) / max(pt + float(ca), 1e-9)
+
+
 def _raise_complete_to(legal_moves: dict[str, Any]) -> int:
+    """Target completion = half pot (chips), clamped to legal [min_raise_to, max_raise_to]."""
     mn = legal_moves.get("min_raise_to")
     mx = legal_moves.get("max_raise_to")
     if mn is None or mx is None:
         raise ValueError("Raise bounds unavailable")
     mn_i, mx_i = int(mn), int(mx)
     pot = float(legal_moves.get("pot_total", 0.0) or 0.0)
-    extra = int(RAISE_POT_FRACTION * pot)
-    target = min(mx_i, max(mn_i, mn_i + extra))
-    return int(target)
+    raw = int(pot * 0.5)
+    return int(min(mx_i, max(mn_i, raw)))
+
+
+def _raise_would_commit_stack_or_more(
+    state: Any, seat: int, target_to: int, strength: float
+) -> bool:
+    """True if we should revert raise → call (keep shove only when strength >= ALL_IN threshold)."""
+    stack = _seat_stack(state, seat)
+    need = _chips_to_complete_to(state, seat, target_to)
+    return need >= stack and strength < ALL_IN_RAISE_PREMIUM_STRENGTH
 
 
 def _passive_fallback(
@@ -208,6 +265,29 @@ class DefaultBot(BasePokerBot):
 class HeuristicAggressionBot(BasePokerBot):
     """Strength + pot-odds heuristic with occasional aggressive bluffs."""
 
+    def _aggressive_raise_or_flat(
+        self,
+        state: Any,
+        lm: dict[str, Any],
+        seat: int,
+        strength: float,
+        *,
+        facing: bool,
+        can_raise: bool,
+        can_cc: bool,
+    ) -> tuple[str, int] | None:
+        """Planned raise/bet with trapping (30% flat) and all-in sizing safety; None = caller decides."""
+        if not can_raise:
+            return None
+        if random.random() < TRAP_FLAT_CALL_PROB and can_cc:
+            return self.format_response("CALL" if facing else "CHECK", 0)
+        target = _raise_complete_to(lm)
+        if _raise_would_commit_stack_or_more(state, seat, target, strength):
+            if can_cc:
+                return self.format_response("CALL" if facing else "CHECK", 0)
+            return None
+        return self.format_response("RAISE" if facing else "BET", target)
+
     def calculate_action(
         self,
         state: Any,
@@ -216,6 +296,7 @@ class HeuristicAggressionBot(BasePokerBot):
     ) -> tuple[str, int]:
         try:
             lm = legal_moves
+            seat = int(lm.get("seat", 0))
             facing = bool(lm.get("facing_bet", False))
             can_fold = bool(lm.get("can_fold", False))
             can_cc = bool(lm.get("can_check_or_call", False))
@@ -226,19 +307,34 @@ class HeuristicAggressionBot(BasePokerBot):
             if AGGRESSION_JITTER > 0:
                 s = min(1.0, max(0.0, s + random.uniform(-AGGRESSION_JITTER, AGGRESSION_JITTER)))
 
+            cost_ratio = _cost_to_call_ratio(lm)
+            if (
+                facing
+                and cost_ratio > SCALING_FEAR_RATIO
+                and s <= SCALING_FEAR_PREMIUM_STRENGTH
+                and can_fold
+            ):
+                return self.format_response("FOLD", 0)
+
             medium_bluff = (
-                WEAK_FOLD <= s < AGGRESSION_RAISE and random.random() < BLUFF_RAISE_PROB
+                WEAK_FOLD <= s < OPENING_RAISE_STRENGTH
+                and random.random() < BLUFF_RAISE_PROB
             )
-            strong = (s >= AGGRESSION_RAISE) or medium_bluff
+            likes_hand = (s >= AGGRESSION_RAISE) or medium_bluff
+            wants_open = (s >= OPENING_RAISE_STRENGTH) or medium_bluff
 
             if facing:
                 if s < WEAK_FOLD and can_fold:
                     return self.format_response("FOLD", 0)
-                if strong:
-                    if can_raise:
-                        return self.format_response("RAISE", _raise_complete_to(lm))
-                    if can_cc:
-                        return self.format_response("CALL", 0)
+                # Re-raise / 3-bet only with true premiums; otherwise flat and stop ping-pong.
+                if s > FACE_RERAISE_MIN_STRENGTH and likes_hand and can_raise:
+                    agg = self._aggressive_raise_or_flat(
+                        state, lm, seat, s, facing=True, can_raise=can_raise, can_cc=can_cc
+                    )
+                    if agg is not None:
+                        return agg
+                if likes_hand and can_cc:
+                    return self.format_response("CALL", 0)
                 if s > po and can_cc:
                     return self.format_response("CALL", 0)
                 if can_fold:
@@ -247,8 +343,12 @@ class HeuristicAggressionBot(BasePokerBot):
                     return self.format_response("CALL", 0)
                 return _passive_fallback(lm)
 
-            if strong and can_raise:
-                return self.format_response("BET", _raise_complete_to(lm))
+            if wants_open:
+                agg = self._aggressive_raise_or_flat(
+                    state, lm, seat, s, facing=False, can_raise=can_raise, can_cc=can_cc
+                )
+                if agg is not None:
+                    return agg
             if can_cc:
                 return self.format_response("CHECK", 0)
             return _passive_fallback(lm)

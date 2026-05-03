@@ -130,13 +130,14 @@
 <main class="app-main relative flex min-h-0 w-full flex-col overflow-visible">
 <div class="poker-table-stage">
 <div class="poker-table-surface border border-slate-800 poker-table-gradient">
-<!-- Pot Info -->
-<div class="absolute top-[22%] flex flex-col items-center z-10">
-<span class="text-[clamp(0.55rem,1.2vmin,0.75rem)] text-slate-500 uppercase tracking-widest mb-0.5">Total Pot</span>
-<span id="total-pot" class="font-display-mono text-primary font-bold leading-tight text-[clamp(0.95rem,3.2vmin,1.75rem)]">$0.00</span>
+<!-- Pot + community cards: stacked so pot sits directly above the board (felt-relative sizing). -->
+<div class="board-pot-stack w-full min-w-0 shrink-0 flex flex-col items-center z-10">
+<div class="pot-above-board flex flex-col items-center text-center">
+<span class="pot-label text-slate-500 uppercase tracking-widest">Total Pot</span>
+<span id="total-pot" class="pot-total-value font-display-mono text-primary font-bold">$0.00</span>
 </div>
-<!-- Community Cards -->
-<div id="board-cards" class="board-cards-wrap w-full z-[1]"></div>
+<div id="board-cards" class="board-cards-wrap w-full min-w-0"></div>
+</div>
 <!-- 6 Players Distribution (5 AI + 1 User at bottom) -->
 <!-- AI 1 (Top Left) ui-slot 0 -->
 <div id="seat-shell-0" class="absolute top-[6%] left-[22%] z-20 -translate-x-1/2">

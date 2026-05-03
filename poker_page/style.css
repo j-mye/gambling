@@ -111,6 +111,25 @@ body {
   min-height: clamp(1.25rem, 11cqh, 2.1rem);
 }
 
+/* Pot label/value track the board; size from felt container (cqw/cqh). */
+.poker-table-surface .board-pot-stack {
+  gap: clamp(0.08rem, 0.85cqh, 0.38rem);
+}
+
+.poker-table-surface .pot-above-board {
+  line-height: 1.1;
+}
+
+.poker-table-surface .pot-label {
+  font-size: clamp(0.48rem, 1.35cqw, 0.72rem);
+  margin: 0 0 clamp(0.04rem, 0.35cqh, 0.12rem);
+}
+
+.poker-table-surface .pot-total-value {
+  font-size: clamp(0.72rem, 3.8cqw, 1.38rem);
+  line-height: 1.05;
+}
+
 .board-cards-wrap {
   min-height: 0;
   flex: 0 1 auto;
