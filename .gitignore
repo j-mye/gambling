@@ -126,6 +126,9 @@ pip-log.txt
 # Ignore local runtime files
 .python-version
 
+# Trained models — too large for GitHub (regenerate: python model_train.py)
+poker_models.pkl
+
 # Exclude data files from repo unless intentionally tracked
 # (uncomment if you want to track specific datasets)
 # /data/raw/*.csv
