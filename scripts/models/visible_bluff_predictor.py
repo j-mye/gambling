@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import joblib
-import numpy as np
+import pandas as pd
 
 
 def _project_root() -> Path:
@@ -57,5 +58,11 @@ def predict_visible_bluff_probability(
         raise ValueError(f"Missing visible-bluff features: {missing}")
     values_row = [float(feature_values[f]) for f in feats]
     model = load_visible_bluff_model(model_path)
-    x = np.asarray([values_row], dtype=np.float64)
-    return float(model.predict_proba(x)[0][1])
+    row = pd.DataFrame([values_row], columns=feats)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*valid feature names.*",
+            category=UserWarning,
+        )
+        return float(model.predict_proba(row)[0][1])

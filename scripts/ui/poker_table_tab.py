@@ -1020,42 +1020,7 @@ def _render_hero_right_spacer(*, compact: bool = False) -> None:
     )
 
 
-<<<<<<< HEAD
-def _render_hero_dashboard(
-    view: dict[str, Any],
-    include_controls: bool = True,
-) -> None:
-    hero = view["hero"]
-    with st.container(border=True):
-        left, right = st.columns(2)
-
-        # Left half: same hero information block as before.
-        with left:
-            st.markdown(_seat_html(hero, view), unsafe_allow_html=True)
-            st.caption(
-                f"Street Bet: ${view['hero_street_bet']:.2f} | Total Hand Bet: ${view['hero_total_bet']:.2f}"
-            )
-            win_probability = view.get("win_probability")
-            if win_probability is not None:
-                st.metric(
-                    "Win Chance",
-                    f"{float(win_probability):.2%}",
-                    help=f"Model stage: {view.get('prediction_stage', 'preflop')}",
-                )
-            elif view.get("prediction_error"):
-                st.caption(f"Win chance unavailable: {view['prediction_error']}")
-            if view.get("bluff_prediction_error"):
-                st.caption(f"Bluff % unavailable: {view['bluff_prediction_error']}")
-
-        # Right half: nested action controls.
-        with right:
-            if include_controls:
-                _render_controls(view)
-            else:
-                _render_controls_readonly(view)
-=======
 _CALL_LABEL_DISPLAY_LEN = 14
->>>>>>> 92675fd47859cf84741c7cfc122f6cca8fdc50b5
 
 
 def _stable_call_button_label(view: dict[str, Any]) -> str:
@@ -1259,6 +1224,17 @@ def _render_hero_dashboard(view: dict[str, Any]) -> None:
             st.caption(
                 f"Street Bet: ${view['hero_street_bet']:.2f} | Total Hand Bet: ${view['hero_total_bet']:.2f}"
             )
+            win_probability = view.get("win_probability")
+            if win_probability is not None:
+                st.metric(
+                    "Win Chance",
+                    f"{float(win_probability):.2%}",
+                    help=f"Model stage: {view.get('prediction_stage', 'preflop')}",
+                )
+            elif view.get("prediction_error"):
+                st.caption(f"Win chance unavailable: {view['prediction_error']}")
+            if view.get("bluff_prediction_error"):
+                st.caption(f"Bluff % unavailable: {view['bluff_prediction_error']}")
         with right:
             if view["hand_complete"]:
                 _render_hero_right_spacer(compact=True)
@@ -1280,6 +1256,17 @@ def _render_hero_waiting_dummy(view: dict[str, Any]) -> None:
             st.caption(
                 f"Street Bet: ${view['hero_street_bet']:.2f} | Total Hand Bet: ${view['hero_total_bet']:.2f}"
             )
+            win_probability = view.get("win_probability")
+            if win_probability is not None:
+                st.metric(
+                    "Win Chance",
+                    f"{float(win_probability):.2%}",
+                    help=f"Model stage: {view.get('prediction_stage', 'preflop')}",
+                )
+            elif view.get("prediction_error"):
+                st.caption(f"Win chance unavailable: {view['prediction_error']}")
+            if view.get("bluff_prediction_error"):
+                st.caption(f"Bluff % unavailable: {view['bluff_prediction_error']}")
         with right:
             if view["hand_complete"]:
                 _render_hero_right_spacer(compact=True)

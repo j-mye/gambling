@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -12,11 +13,28 @@ import pandas as pd
 VALID_STAGES = {"preflop", "flop", "turn", "river"}
 
 
+def _project_root() -> Path:
+    """Repo root (directory that contains main.py), regardless of process cwd."""
+    return Path(__file__).resolve().parents[2]
+
+
+def default_stage_artifact_paths() -> tuple[str, str]:
+    root = _project_root()
+    return str(root / "poker_models.pkl"), str(root / "feature_names.pkl")
+
+
+DEFAULT_STAGE_MODEL_PATH, DEFAULT_STAGE_FEATURE_PATH = default_stage_artifact_paths()
+
+
 @lru_cache(maxsize=1)
-def load_stage_models(model_path: str = "poker_models.pkl") -> dict[str, Any]:
+def load_stage_models(model_path: str = DEFAULT_STAGE_MODEL_PATH) -> dict[str, Any]:
     path = Path(model_path)
     if not path.exists():
-        raise FileNotFoundError(f"Missing stage model artifact: {path}")
+        raise FileNotFoundError(
+            f"Missing {path.name} under {path.parent} — not on GitHub (too large). "
+            "From the project root run: python model_train.py "
+            "(needs data/cleanedGambling.csv or data/gambling.csv)."
+        )
     loaded = joblib.load(path)
     if not isinstance(loaded, dict):
         raise ValueError("Stage model artifact must be a stage->model dictionary")
@@ -24,10 +42,12 @@ def load_stage_models(model_path: str = "poker_models.pkl") -> dict[str, Any]:
 
 
 @lru_cache(maxsize=1)
-def load_stage_feature_map(feature_path: str = "feature_names.pkl") -> dict[str, list[str]]:
+def load_stage_feature_map(feature_path: str = DEFAULT_STAGE_FEATURE_PATH) -> dict[str, list[str]]:
     path = Path(feature_path)
     if not path.exists():
-        raise FileNotFoundError(f"Missing stage feature artifact: {path}")
+        raise FileNotFoundError(
+            f"Missing {path.name} under {path.parent}. Run python model_train.py from project root."
+        )
     loaded = joblib.load(path)
     if not isinstance(loaded, dict):
         raise ValueError("Feature artifact must be a stage->feature-list dictionary")
@@ -40,8 +60,8 @@ def load_stage_feature_map(feature_path: str = "feature_names.pkl") -> dict[str,
 def predict_stage_win_probability(
     stage: str,
     feature_values: dict[str, float | int],
-    model_path: str = "poker_models.pkl",
-    feature_path: str = "feature_names.pkl",
+    model_path: str = DEFAULT_STAGE_MODEL_PATH,
+    feature_path: str = DEFAULT_STAGE_FEATURE_PATH,
 ) -> float:
     stage_key = str(stage).strip().lower()
     if stage_key not in VALID_STAGES:
@@ -65,4 +85,12 @@ def predict_stage_win_probability(
     model = models.get(stage_key)
     if model is None:
         raise KeyError(f"No model found for stage '{stage_key}' in artifact")
-    return float(model.predict_proba(vector)[0][1])
+    # CalibratedClassifierCV forwards ndarray to the inner RF; sklearn warns even when
+    # callers pass a DataFrame — suppress only this noisy mismatch.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*valid feature names.*",
+            category=UserWarning,
+        )
+        return float(model.predict_proba(vector)[0][1])
