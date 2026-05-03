@@ -34,6 +34,8 @@ def _load_data() -> pd.DataFrame:
                 keep = [c for c in preferred if c in df.columns]
                 if keep:
                     return df[keep].copy()
+                # Wrong schema — don't return raw df; try next path or built-in fallback.
+                continue
             return df
     return pd.DataFrame(
         {
