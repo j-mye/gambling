@@ -3,6 +3,8 @@
 This module holds the long-form functions so the notebook stays readable.
 The notebook imports from here; this file lives next to the notebook under `notebooks/`.
 
+**Reported holdout snapshot:** see `NOTEBOOK_HOLDOUT_METRICS` (aligned to the notebook’s saved outputs).
+
 **Hand strength / win modeling alignment**
 
 - **Training & this notebook:** `best_combination_from_tokens` and `hand_strength_from_tokens` here follow the
@@ -43,6 +45,21 @@ CLEAN_PATH = ROOT / "data" / "cleanedGambling.csv"
 
 RANDOM_SEED = 42
 np.random.seed(RANDOM_SEED)
+
+# Last-run holdout snapshot from `00_mega_final_project.ipynb` (grouped eval / printed reports).
+# Re-train or re-execute the notebook to refresh; scripts should not depend on these for logic.
+NOTEBOOK_HOLDOUT_METRICS = {
+    "stage_win_grouped_rows_per_stage": "~102,615",
+    "stage_win_auc_preflop_to_river": (0.692, 0.722),
+    "stage_win_accuracy_preflop_to_river": (0.661, 0.682),
+    "stage_win_brier_preflop_to_river": (0.212, 0.201),
+    "stage_win_f1_macro_preflop_to_river": (0.449, 0.502),
+    "stage_win_class_report_rows": "~20,512",
+    "stage_win_recall_win_class_range": (0.34, 0.39),
+    "stage_win_recall_loss_class_range": (0.86, 0.88),
+    "visible_bluff_accuracy_auc_brier_f1": (0.975, 0.916, 0.022, 0.004),
+    "visible_bluff_positives_in_holdout": 509,
+}
 
 
 # -----------------------------

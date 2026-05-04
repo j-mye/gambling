@@ -17,19 +17,6 @@ VALID_ACTIONS = {"FOLD", "CALL", "CHECK", "RAISE", "BET"}
 class BasePokerBot(ABC):
     """Abstract interface all poker bots must follow."""
 
-    def parse_game_state(self, state: Any, legal_moves: dict[str, Any]) -> dict[str, Any]:
-        """Transform raw state into model-friendly features."""
-        return {
-            "turn_index": getattr(state, "turn_index", None),
-            "street_index": getattr(state, "street_index", None),
-            "legal_moves": dict(legal_moves),
-        }
-
-    def evaluate_hand_strength(self, hole_cards: list[str], state: Any) -> float:
-        """Return rough hand strength estimate in [0, 1]."""
-        _ = (hole_cards, state)
-        return 0.5
-
     def format_response(self, action: str, amount: int) -> tuple[str, int]:
         """Normalize action response to strict (ACTION, AMOUNT) contract."""
         return normalize_bot_response((action, amount))

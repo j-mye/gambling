@@ -293,8 +293,33 @@ def update_ui() -> None:
 
     me = _el("model-error")
     if me is not None:
-        parts = [view.get("bot_error", ""), view.get("prediction_error", ""), view.get("bluff_prediction_error", "")]
+        parts = [
+            view.get("bot_error", ""),
+            view.get("prediction_error", ""),
+            view.get("bluff_prediction_error", ""),
+            view.get("action_advisor_error", ""),
+        ]
         me.innerText = " | ".join(p for p in parts if p) or ""
+
+    adv_act = _el("action-advisor-action")
+    adv_conf = _el("action-advisor-confidence")
+    if adv_act is not None and adv_conf is not None:
+        if view.get("hand_complete") or not view.get("is_hero_turn"):
+            adv_act.innerText = "—"
+            adv_conf.innerText = ""
+        else:
+            act = view.get("action_advisor_action")
+            conf = view.get("action_advisor_confidence")
+            if act:
+                adv_act.innerText = str(act).strip().upper()
+                adv_conf.innerText = (
+                    f"Confidence {float(conf):.0f}%"
+                    if conf is not None
+                    else ""
+                )
+            else:
+                adv_act.innerText = "—"
+                adv_conf.innerText = ""
 
     call_btn = _el("btn-call")
     if call_btn is not None:

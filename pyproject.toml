@@ -3,7 +3,7 @@ name = "gambling"
 version = "0.1.0"
 description = "Poker Behavior Analysis"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "joblib",
     "matplotlib",
@@ -15,3 +15,8 @@ dependencies = [
     "scikit-learn",
     "scipy",
 ]
+
+# Pylance/Pyright: seaborn (and similar libs) often trigger "could not be resolved from source"
+# even when installed — they are not typed for strict source resolution.
+[tool.pyright]
+reportMissingModuleSource = "none"

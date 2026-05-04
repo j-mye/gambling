@@ -10,12 +10,11 @@ Architecture (read this before touching anything):
       One function, one job: give PokerKit cards whenever it asks for them.
       It handles can_deal_hole and can_deal_board.  Nothing else.
 
-  PILLAR 3 – Strict top-to-bottom execution order inside render_playable_poker_tab:
+  PILLAR 3 – Browser session (`main.py`): hero handlers → Dealer → optional bot loop → `update_ui()`
       Step 1  Process the hero's pending action (if any was queued by a button click).
       Step 2  Run the Dealer (clears any deal requests triggered by the hero's action).
-      Step 2b Pre-fill table + disabled hero before the bot loop (rigid DOM before time.sleep).
       Step 3  Run bots + Dealer in alternation until it is the hero's turn or the hand ends.
-      Step 4  Render – read-only; zero engine mutations below this line.
+      Step 4  `update_ui()` reads `build_view` only — no engine mutations in the DOM layer.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ from typing import Any
 from pokerkit import Automation, NoLimitTexasHoldem
 
 from bot_backend import BasePokerBot, build_bot_instances, normalize_bot_response
-from cards_html import render_face_down_card, render_face_up_card
+from cards_html import hero_card_cell
 from game_state import GameState
 from table_guests import assign_full_table, ensure_seat_names, replace_guest_at_seat
 
@@ -573,46 +572,6 @@ def _hero_commitment_metrics(state: Any, hero: int) -> tuple[float, float]:
     return street_bet, _seat_total_hand_commit(state, hero)
 
 
-def _hero_raise_count(state: Any, hero: int) -> int:
-    """Count hero raises/bets (completion operations) so far in hand."""
-    count = 0
-    for op in list(getattr(state, "operations", []) or []):
-        if getattr(op, "player_index", None) != hero:
-            continue
-        if type(op).__name__ == "CompletionBettingOrRaisingTo":
-            count += 1
-    return count
-
-
-def _hero_street_bets_count(state: Any, hero: int) -> int:
-    """Count how many streets the hero has invested chips in."""
-    streets = ["preflop", "flop", "turn", "river"]
-    current_street = "preflop"
-    invested = {street: 0.0 for street in streets}
-
-    for op in list(getattr(state, "operations", []) or []):
-        op_name = type(op).__name__
-        if op_name == "BoardDealing":
-            idx = streets.index(current_street)
-            if idx < len(streets) - 1:
-                current_street = streets[idx + 1]
-            continue
-        if getattr(op, "player_index", None) != hero:
-            continue
-        amount = getattr(op, "amount", None)
-        if amount is None:
-            continue
-        if op_name in {
-            "AntePosting",
-            "BlindOrStraddlePosting",
-            "CheckingOrCalling",
-            "CompletionBettingOrRaisingTo",
-        }:
-            invested[current_street] += float(amount)
-
-    return sum(1 for value in invested.values() if value > 0)
-
-
 def _live_pot_metrics(state: Any) -> tuple[float, float]:
     """Compute (total_pot, current_street_pot) from live PokerKit state."""
     active_bets = float(sum(list(getattr(state, "bets", []) or [])))
@@ -708,6 +667,9 @@ def _build_view(gs: GameState) -> dict[str, Any]:
             "bluff_prob_by_seat": [None] * _N_PLAYERS,
             "bluff_prediction_error": "",
             "total_hand_bet_by_seat": [0.0] * _N_PLAYERS,
+            "action_advisor_action": None,
+            "action_advisor_confidence": None,
+            "action_advisor_error": "",
         }
 
     hand_complete = not bool(getattr(state, "status", True))
@@ -859,6 +821,36 @@ def _build_view(gs: GameState) -> dict[str, Any]:
         _seat_total_hand_commit(state, i) for i in range(_N_PLAYERS)
     ]
 
+    action_advisor_action: str | None = None
+    action_advisor_confidence: float | None = None
+    action_advisor_error = ""
+    if is_hero_turn and bool(getattr(state, "status", True)) and not hand_complete:
+        view_probe: dict[str, Any] = {
+            "hero": hero,
+            "stacks": display_stacks,
+            "win_probability": win_probability,
+            "call_amount": call_amount,
+            "pot_total": live_total_pot,
+            "facing_bet": facing_bet,
+            "min_raise": min_raise,
+            "max_raise": max_raise,
+            "board_cards": board_cards,
+            "hole_by_seat": hole_by_seat,
+            "folded": folded,
+            "hero_street_bet": hero_street_bet,
+            "hero_total_bet": hero_total_bet,
+            "prediction_stage": phase_key,
+            "bluff_prob_by_seat": bluff_prob_by_seat,
+        }
+        try:
+            from action_advisor import predict_decision_advisor
+
+            action_advisor_action, action_advisor_confidence = predict_decision_advisor(
+                view_probe
+            )
+        except Exception as exc:
+            action_advisor_error = str(exc)
+
     return {
         "hero": hero,
         "seat_count": _N_PLAYERS,
@@ -895,83 +887,15 @@ def _build_view(gs: GameState) -> dict[str, Any]:
         "bluff_prob_by_seat": bluff_prob_by_seat,
         "bluff_prediction_error": bluff_prediction_error,
         "total_hand_bet_by_seat": total_hand_bet_by_seat,
+        "action_advisor_action": action_advisor_action,
+        "action_advisor_confidence": action_advisor_confidence,
+        "action_advisor_error": action_advisor_error,
     }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# RENDER LAYER  (zero engine mutations – read-only)
+# BOARD HTML (read-only; seat chrome lives in main.py)
 # ══════════════════════════════════════════════════════════════════════════════
-
-def _outcome_class(seat: int, view: dict[str, Any]) -> str:
-    if not view["hand_complete"]:
-        return ""
-    payoffs = view["payoffs"]
-    if seat >= len(payoffs):
-        return ""
-    p = payoffs[seat]
-    if p > 0:
-        return " winner"
-    if p < 0:
-        return " loser"
-    return ""
-
-
-def _seat_html(seat: int, view: dict[str, Any]) -> str:
-    hero = view["hero"]
-    is_hero = seat == hero
-    folded = view["folded"][seat] if seat < len(view["folded"]) else False
-    is_active = (view["turn_index"] == seat) and not view["hand_complete"]
-
-    stack = view["stacks"][seat] if seat < len(view["stacks"]) else 0
-    bet = view["bets"][seat] if seat < len(view["bets"]) else 0
-    hole = view["hole_by_seat"][seat] if seat < len(view["hole_by_seat"]) else []
-    last = view["last_action"].get(seat, "")
-    role = view.get("seat_roles", {}).get(seat, "")
-
-    seat_class = "player-seat"
-    if is_active:
-        seat_class += " active-turn"
-    if folded:
-        seat_class += " seat-folded"
-    seat_class += _outcome_class(seat, view)
-
-    badge = f"<div class='action-badge'>{last}</div>" if last else ""
-    role_badge = ""
-    if role:
-        role_color = {"D": "#F1C40F", "SB": "#3498DB", "BB": "#9B59B6"}.get(role, "#BCCCDC")
-        role_badge = (
-            "<div style='display:inline-flex;align-items:center;justify-content:center;"
-            "margin-left:6px;padding:2px 7px;border-radius:999px;font-size:10px;"
-            f"font-weight:800;background:{role_color};color:#102A43;'>{role}</div>"
-        )
-    name = f"YOU (Seat {seat + 1})" if is_hero else f"Seat {seat + 1}"
-
-    bps = view.get("bluff_prob_by_seat") or []
-    metrics_parts = [f"Stack ${stack}", f"Bet ${bet}"]
-    if seat < len(bps) and bps[seat] is not None:
-        metrics_parts.append(f"Bluff ~{float(bps[seat]) * 100.0:.0f}%")
-    metrics_line = " | ".join(metrics_parts)
-
-    if is_hero:
-        cards_html = "".join(render_face_up_card(r, s) for r, s in hole)
-    else:
-        # Showdown reveal rule:
-        # - Hand complete + opponent not folded => reveal real hole cards.
-        # - Folded opponents remain face-down (and are already grayed by seat class).
-        reveal_at_showdown = bool(view["hand_complete"] and not folded)
-        if reveal_at_showdown:
-            cards_html = "".join(render_face_up_card(r, s) for r, s in hole)
-        else:
-            cards_html = "".join(render_face_down_card() for _ in range(len(hole) or 2))
-
-    return (
-        f"<div class='{seat_class}' style='position:relative;'>"
-        f"{badge}"
-        f"<div style='font-weight:700;font-size:13px;'>{name}{role_badge}</div>"
-        f"<div class='seat-metrics'>{metrics_line}</div>"
-        f"<div style='display:flex;gap:6px;margin-top:8px;'>{cards_html}</div>"
-        f"</div>"
-    )
 
 
 def _board_html(view: dict[str, Any]) -> str:
@@ -983,10 +907,9 @@ def _board_html(view: dict[str, Any]) -> str:
             rank, suit = board[i]
             slot_html.append(
                 "<div class='board-slot card'>"
-                + render_face_up_card(
-                    rank, suit, classes=f"community-card deal-animate deal-delay-{i}"
-                )
-                + "</div>"
+                f"<div class='community-card deal-animate deal-delay-{i}'>"
+                + hero_card_cell(rank, suit)
+                + "</div></div>"
             )
         else:
             slot_html.append(
@@ -994,7 +917,7 @@ def _board_html(view: dict[str, Any]) -> str:
                 "<div class='card placeholder' "
                 "style='width:var(--card-w,72px);height:var(--card-h,104px);max-width:100%;"
                 "border:1px dashed rgba(130,154,177,0.85);"
-                "border-radius:12px;background:rgba(15,23,42,0.25);"
+                "border-radius:0.35rem;background:rgba(15,23,42,0.25);"
                 "box-shadow:inset 0 0 0 1px rgba(188,204,220,0.2);'></div>"
                 "</div>"
             )

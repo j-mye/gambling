@@ -399,6 +399,14 @@ body {
   align-items: center;
   justify-content: center;
 }
+/* Board uses same `hero_card_cell` markup as hero hole cards; wrapper carries deal animation. */
+.board-slot .community-card {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
 @keyframes slideIn {
   from {
     opacity: 0;

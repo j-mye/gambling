@@ -94,10 +94,13 @@ def hero_win_probability_proxy(
         street_factor = 1.0
 
     extra = max(0, nv - 1)
-    if strength >= 8:
-        mult = 1.0 / (1.0 + 0.14 * extra)
+    # Made hands full house+ still crush multiway ranges; old mult crushed the proxy (~0.5 for boats).
+    if strength >= 9:
+        mult = 1.0 / (1.0 + 0.05 * extra)
+    elif strength >= 8:
+        mult = 1.0 / (1.0 + 0.08 * extra)
     elif strength >= 7:
-        mult = 1.0 / (1.0 + 0.18 * extra)
+        mult = 1.0 / (1.0 + 0.1 * extra)
     elif strength >= 5:
         mult = 1.0 / (1.0 + 0.3 * extra)
     else:
@@ -105,7 +108,12 @@ def hero_win_probability_proxy(
 
     risk = board_texture_risk(board_t)
     tex_scale = max(0.0, 1.0 - 0.1 * max(0, strength - 5))
-    texture_mult = 1.0 - (0.34 * risk * tex_scale)
+    texture_penalty = 0.34 * risk * tex_scale
+    if strength >= 8:
+        texture_penalty *= 0.25
+    elif strength >= 7:
+        texture_penalty *= 0.45
+    texture_mult = 1.0 - texture_penalty
 
     board_only = hand_strength_index(board_t) if len(board_t) >= 3 else 1
     hole_lift = max(0.0, float(strength - board_only))
@@ -116,6 +124,13 @@ def hero_win_probability_proxy(
         nuts_bonus = 0.06 + 0.04 * float(strength - 7)
 
     raw = river_eq * street_factor * mult * texture_mult + kicker_nudge + nuts_bonus
+    # Floor: full house+ is rarely wrong to continue aggressively; multiway math was too pessimistic.
+    if strength >= 9:
+        raw = max(raw, 0.82)
+    elif strength >= 8:
+        raw = max(raw, 0.76)
+    elif strength >= 7:
+        raw = max(raw, 0.70)
     return min(0.97, max(0.08, raw))
 
 
