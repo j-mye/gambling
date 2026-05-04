@@ -9,6 +9,46 @@ from typing import Any
 
 _MODEL: dict[str, Any] | None = None
 
+_FEATURE_DIM = 16
+_CLASS_ORDER = ("fold", "call", "raise")
+
+
+def _fallback_model() -> dict[str, Any]:
+    """Uniform logits when JSON is missing, empty, or corrupt (avoids JSONDecodeError in UI)."""
+    z = [0.0] * _FEATURE_DIM
+    return {
+        "version": 0,
+        "feature_dim": _FEATURE_DIM,
+        "class_order": list(_CLASS_ORDER),
+        "coef": [list(z), list(z), list(z)],
+        "intercept": [0.0, 0.0, 0.0],
+        "scaler_mean": [0.0] * _FEATURE_DIM,
+        "scaler_scale": [1.0] * _FEATURE_DIM,
+    }
+
+
+def _model_ok(m: Any) -> bool:
+    if not isinstance(m, dict):
+        return False
+    try:
+        co = m["coef"]
+        mean = m["scaler_mean"]
+        scale = m["scaler_scale"]
+        ice = m["intercept"]
+        classes = m["class_order"]
+        if len(co) != 3 or len(ice) != 3:
+            return False
+        for row in co:
+            if len(row) != _FEATURE_DIM:
+                return False
+        if len(mean) != _FEATURE_DIM or len(scale) != _FEATURE_DIM:
+            return False
+        if len(classes) != 3:
+            return False
+    except (KeyError, TypeError):
+        return False
+    return True
+
 
 def _model_path() -> str:
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "action_model.json")
@@ -16,10 +56,33 @@ def _model_path() -> str:
 
 def _load_model() -> dict[str, Any]:
     global _MODEL
-    if _MODEL is None:
-        path = _model_path()
+    if _MODEL is not None:
+        return _MODEL
+    path = _model_path()
+    raw = ""
+    try:
         with open(path, "r", encoding="utf-8") as f:
-            _MODEL = json.load(f)
+            raw = f.read()
+    except OSError:
+        _MODEL = _fallback_model()
+        return _MODEL
+
+    text = (raw or "").strip()
+    if not text:
+        _MODEL = _fallback_model()
+        return _MODEL
+
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        _MODEL = _fallback_model()
+        return _MODEL
+
+    if not _model_ok(parsed):
+        _MODEL = _fallback_model()
+        return _MODEL
+
+    _MODEL = parsed
     return _MODEL
 
 
