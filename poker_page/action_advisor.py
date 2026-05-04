@@ -215,8 +215,14 @@ def _should_force_fold_weak_hand(
     if not facing or float(view.get("call_amount") or 0) <= 0:
         return False
     call_amt = float(view.get("call_amount") or 0)
-    # Preflop trash: fold real defense prices, but allow tiny completions (e.g. last chip to post BB).
-    if _is_garbage_preflop(view) and call_amt > 0 and (call_frac >= 0.008 or call_amt >= 2):
+    # Preflop trash: only auto-muck when the equity proxy also thinks we're in trouble.
+    # (Otherwise small pairs / suited connectors lose model "call" → forced fold too often.)
+    if (
+        _is_garbage_preflop(view)
+        and call_amt > 0
+        and (call_frac >= 0.008 or call_amt >= 2)
+        and wp < 0.29
+    ):
         return True
     # Global: terrible price vs proxy
     if wp <= 0.22 and call_frac >= 0.04:
@@ -225,10 +231,20 @@ def _should_force_fold_weak_hand(
         return True
     if wp <= 0.36 and call_frac >= 0.22:
         return True
-    # Postflop: one pair or worse, facing meaningful heat
-    if view.get("board_cards") and tier <= 2 and call_frac >= 0.07 and wp <= 0.36:
+    # Postflop: weak one-pair-or-less facing a real stab (skip tiny peels).
+    if (
+        view.get("board_cards")
+        and tier <= 2
+        and call_frac >= 0.09
+        and wp <= 0.34
+    ):
         return True
-    if view.get("board_cards") and tier <= 1 and call_frac >= 0.05 and wp <= 0.40:
+    if (
+        view.get("board_cards")
+        and tier <= 1
+        and call_frac >= 0.07
+        and wp <= 0.38
+    ):
         return True
     return False
 
@@ -284,5 +300,32 @@ def predict_decision_advisor(view: dict[str, Any]) -> tuple[str, float]:
             return "raise", max(73.0, conf)
         if facing and wp >= 0.56 and call_frac <= 0.28 and action == "call":
             return "raise", max(74.0, conf)
+
+    # Head over-folds OOD live views; map obvious checks / reasonable defenses away from pure fold.
+    if action == "fold" and not facing:
+        return "call", max(58.0, min(76.0, conf * 0.72 + 18.0))
+
+    if (
+        action == "fold"
+        and facing
+        and float(view.get("call_amount") or 0) > 0
+        and wp >= 0.24
+        and call_frac <= 0.24
+    ):
+        # Don't rescue trash that already matched forced-fold rules (they returned earlier).
+        dead_air = (
+            view.get("board_cards")
+            and tier <= 1
+            and wp < 0.23
+            and call_frac >= 0.10
+        )
+        if not dead_air:
+            if _is_garbage_preflop(view) and wp < 0.33:
+                pass
+            else:
+                return "call", max(
+                    52.0,
+                    min(74.0, 46.0 + 58.0 * min(1.0, wp / 0.52) * (1.0 - 0.35 * call_frac)),
+                )
 
     return action, conf
