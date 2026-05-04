@@ -14,8 +14,8 @@ This card documents the dataset used in this project for stage win prediction, v
 
 | Name | Email |
 | ---- | ---- |
-| Garrido-Lestachebeli | (student submission) |
-| Codex Assistant | n/a |
+| Garrido-Lestachebeli | garrido-lestachebeli@msoe.edu |
+| Joshua Myers | myersjr@msoe.edu |
 
 # Known Sensitive Features
 
