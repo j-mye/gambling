@@ -54,6 +54,7 @@ body {
 
 .poker-table-surface {
   position: relative;
+  isolation: isolate;
   width: min(100%, calc(100cqh * 21 / 9));
   max-width: 100%;
   aspect-ratio: 21 / 9;
@@ -70,12 +71,90 @@ body {
   container-name: felt;
 }
 
-/* Seat card size scales with felt so all six fit inside narrow viewports. */
+/* Community cards + pot stay above seat chrome where geometry intersects. */
+.poker-table-surface .board-pot-stack {
+  position: relative;
+  z-index: 25;
+  gap: clamp(0.08rem, 0.85cqh, 0.38rem);
+}
+
+/* Full-felt grid: one cell per player so panels cannot overlap each other.
+   (Absolute % positioning + shrink-to-fit width was letting .seat-panel blow past caps.) */
+.poker-table-surface .seat-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(2px, 0.55vmin, 8px);
+  padding: clamp(3px, 1cqmin, 12px);
+  pointer-events: none;
+}
+
+.poker-table-surface .seat-overlay [id^="seat-shell-"] {
+  pointer-events: auto;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.poker-table-surface .seat-overlay [id^="seat-shell-"] .seat-panel {
+  width: 100%;
+  max-width: min(11rem, 100%);
+}
+
+/* Slot placement (ui-slot index): top arc | middle wings | hero */
+.poker-table-surface .seat-shell-slot--0 {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  justify-self: center;
+}
+
+.poker-table-surface .seat-shell-slot--1 {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  justify-self: center;
+}
+
+.poker-table-surface .seat-shell-slot--2 {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  justify-self: center;
+}
+
+.poker-table-surface .seat-shell-slot--4 {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: center;
+  justify-self: start;
+}
+
+.poker-table-surface .seat-shell-slot--3 {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: center;
+  justify-self: end;
+}
+
+.poker-table-surface .seat-shell-slot--5 {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  align-self: end;
+  justify-self: center;
+}
+
+/* Seat card size scales with felt; width is bounded by grid cell + rule above. */
 .poker-table-surface .seat-panel {
-  width: min(100%, clamp(7.25rem, 36cqw, 11.5rem));
-  min-width: clamp(6.75rem, 32cqw, 10rem);
+  min-width: 0;
+  width: 100%;
+  max-width: min(11rem, 100%);
   min-height: clamp(2.55rem, 17cqh, 5.5rem);
-  max-width: min(100%, 44cqw);
 }
 
 /* Uniform square thumbs; object-position tuned per guest in JS for face bias. */
@@ -96,7 +175,7 @@ body {
 .poker-table-surface .seat-name-label {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
   overflow: hidden;
   word-break: break-word;
   hyphens: auto;
@@ -133,10 +212,6 @@ body {
 }
 
 /* Pot label/value track the board; size from felt container (cqw/cqh). */
-.poker-table-surface .board-pot-stack {
-  gap: clamp(0.08rem, 0.85cqh, 0.38rem);
-}
-
 .poker-table-surface .pot-above-board {
   line-height: 1.1;
 }
